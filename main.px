@@ -1,2 +1,2 @@
-bytes num = 3;
-num
+resb a[3] = 5;
+byte boceta = 100;

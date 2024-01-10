@@ -2,6 +2,7 @@ class Env:
   def __init__(self, parent=None, ispersistant=False) -> None:
     self.parent = parent
     self.names = {}
+    self.consts = {}
     self.external_names = {}
     self.ispersistant = ispersistant
 
@@ -16,12 +17,14 @@ class Env:
 
     raise NameError(f"Cannot found name '{name}'")
 
-  def newName(self, name, value):
+  def newName(self, name, value, isconst=False):
     if name in self.names:
       raise NameError(f"Attempt to re-define name '{name}'")
 
     self.names[name] = value
-
+    if isconst:
+        self.consts[name] = None
+    
 
   def setName(self, name, value):
     can_change = False
@@ -33,10 +36,11 @@ class Env:
         if name in self.parent.names:
           can_change = True
 
-    if not can_change:
+    if name in self.consts:
+      raise NameError(f"Attempt to change a constant name '{name}'")
+    elif not can_change:
       raise NameError(f"Attempt to set a non-defined name '{name}'")
-    
-    if name in self.names:
+    elif name in self.names:
       self.names[name] = value
     else:
       if self.parent.ispersistant:

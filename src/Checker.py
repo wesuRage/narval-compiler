@@ -22,8 +22,8 @@ class Checker:
         'has*': False,
         'has%': False
       }
-
     }
+
   def getNodeHandler(self, nodetype):
     return Checker.__dict__["eval_" + nodetype]
 
@@ -37,19 +37,45 @@ class Checker:
       self.eval(stmt)
 
   def eval_VarDeclaration(self, node):
-    typevalue = self.eval(node["value"])
-    definition = {
-      'value': node["value"],
-      'typeValue': typevalue,
-      'type': node["type"]
-    }
+    if node.get("value"):
+      typevalue = self.eval(node["value"])
+      definition = {
+        'value': node["value"],
+        'typeValue': typevalue,
+        'type': node["type"]
+      }
 
-    id = node["Identifier"]["value"]
-    value = node["value"]["value"]
+      id = node["Identifier"]["value"]
+      value = node["value"]
 
-    self.env.newName(id, value)
+      if node["type"] == "constant":
+        return self.env.newName(id, value, True)
+      else:
+        return self.env.newName(id, value)
+    else:
+      typevalue = None
+      definition = {
+        'value': None,
+        'typeValue': typevalue,
+        'type': node["type"]
+      }
+
+      id = node["Identifier"]["value"]
+      value = None
+
+      return self.env.newName(id, value)
+
     
+  def eval_AssignmentExpr(self, node):
+    if node["assigne"]["NodeType"] != "Identifier":
+      raise SyntaxError("Invalid expression in assignment")
     
+    varname = node["assigne"]["value"]
+    value = node["value"]    
+
+    self.env.setName(varname, value)
+    
+
   def eval_NumericLiteral(self, node):
     return "number"
   

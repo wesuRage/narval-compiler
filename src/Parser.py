@@ -32,14 +32,14 @@ class Parser:
   
   def parse_stmt(self):
     match self.at()["type"]:
-      case "BYTES" | "RESB":
+      case "BYTE" | "RESB":
         return self.parse_var_declaration()
 
       case _:
         return self.parse_expr()
   
   def parse_var_declaration(self):
-    isBytes = self.eat()["type"] == "BYTES"
+    isBytes = self.eat()["type"] == "BYTE"
     Identifier = self.expect("IDENTIFIER", "Identifier expected.")
     
     if isBytes:
@@ -49,26 +49,29 @@ class Parser:
         "NodeType": "VarDeclaration",
         "Identifier": Identifier,
         "value": self.parse_expr(),
-        "type": "constant" if isBytes else "reserved"
+        "type": "constant" if isBytes else "reserved",
+        "directive": "db" if isBytes else "resb"
       }
       self.expect("SEMICOLON", "Expected ';' at the end of statement.")
       return declaration
 
 
-    self.expect("OBRACKET", "Expected '[' for reserve's length.")
+    self.expect("OBRACKET", "Expected '[' for reserved length.")
     
     length = self.parse_expr()
 
-    self.expect("CBRACKET", "Expected ']' for reserve's length.")
+    self.expect("CBRACKET", "Expected ']' for reserved length.")
     if self.at()["type"] == "SEMICOLON":
+      self.eat()
       declaration = {
         "NodeType": "VarDeclaration",
         "Identifier": Identifier,
-        "length": length,
-        "type": "reserved"
+        "length": length["value"],
+        "type": "reserved",
+        "directive": "resb"
       }
       return declaration
-        
+ 
     else:  
       self.expect("EQUALS", "Expected equals in variable declaration.")
       value = self.parse_expr()
@@ -77,7 +80,9 @@ class Parser:
         "Identifier": Identifier,
         "length": length,
         "value": value,
-        "type": "reserved"
+        "type": "reserved",
+        "directive": "resb"
+
       }
       self.expect("SEMICOLON", "Expected ';' at the end of statement.")
 

@@ -31,15 +31,15 @@ class Lexer:
       "?": "INTERROGATION",
       "&": "AND",
       "null": "NULL",
-      "bytes": "BYTES",
+      "byte": "BYTE",
       "resb": "RESB",
       "label": "LABEL"
     }
 
     self.tokens_list = []
 
-  def Tokenize(self, source_code: str) -> list:
-    tokens_regex = re.compile(r'\w+|.')
+  def tokenize(self, source_code: str) -> list:
+    tokens_regex = re.compile(r'\w+|".*?"|.')
     src = tokens_regex.findall(source_code)
 
     for lexeme in src:
