@@ -1,8 +1,9 @@
-from Parser import Parser
+from src.Env import Env
 
 class Checker:
   def __init__(self) -> None:
-    super().__init__()
+    self.envs = [Env(ispersistant=True)]
+    self.env = self.envs[0]
 
     self.typedefs = {
       'number': {
@@ -34,15 +35,26 @@ class Checker:
   def eval_Program(self, node):
     for stmt in node["body"]:
       self.eval(stmt)
-  #Expressao
-  def eval_VarDeclaration(self, node):
-    return node
 
+  def eval_VarDeclaration(self, node):
+    typevalue = self.eval(node["value"])
+    definition = {
+      'value': node["value"],
+      'typeValue': typevalue,
+      'type': node["type"]
+    }
+
+    id = node["Identifier"]["value"]
+    value = node["value"]["value"]
+
+    self.env.newName(id, value)
+    
+    
   def eval_NumericLiteral(self, node):
-    return node
+    return "number"
   
   def eval_Identifier(self, node):
-    return node
+    return self.env.getName(node["value"])
 
   def eval_BinaryExpr(self, node):
     left = node["left"]
@@ -56,7 +68,6 @@ class Checker:
     
     if ltype == "null" or rtype == "null":
       raise TypeError("Operations with null values are not allowed.")
-    #por enquanto é isso
     return "number"
   
   def supportsOp(self, type, op):
@@ -64,8 +75,3 @@ class Checker:
 
     return typedef["has" + op]
 
-parser = Parser()
-checker = Checker()
-
-tree = parser.produceAST("""resv dois;
-                         dois = 2;""")

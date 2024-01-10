@@ -52,34 +52,36 @@ class Parser:
         "type": "constant" if isBytes else "reserved"
       }
       self.expect("SEMICOLON", "Expected ';' at the end of statement.")
+      return declaration
 
-    if not isBytes:
-      self.expect("OBRACKET", "Expected '[' for reserve's length.")
-      
-      length = self.parse_expr()
 
-      self.expect("CBRACKET", "Expected ']' for reserve's length.")
-      if self.at()["type"] == "SEMICOLON":
-        declaration = {
-          "NodeType": "VarDeclaration",
-          "Identifier": Identifier,
-          "length": length,
-          "type": "reserved"
-        }
-      
-      else:  
-        self.expect("EQUALS", "Expected equals in variable declaration.")
-        value = self.parse_expr()
-        declaration = {
-          "NodeType": "VarDeclaration",
-          "Identifier": Identifier,
-          "length": length,
-          "value": value,
-          "type": "reserved"
-        }
-        self.expect("SEMICOLON", "Expected ';' at the end of statement.")
+    self.expect("OBRACKET", "Expected '[' for reserve's length.")
+    
+    length = self.parse_expr()
 
-    return declaration
+    self.expect("CBRACKET", "Expected ']' for reserve's length.")
+    if self.at()["type"] == "SEMICOLON":
+      declaration = {
+        "NodeType": "VarDeclaration",
+        "Identifier": Identifier,
+        "length": length,
+        "type": "reserved"
+      }
+      return declaration
+        
+    else:  
+      self.expect("EQUALS", "Expected equals in variable declaration.")
+      value = self.parse_expr()
+      declaration = {
+        "NodeType": "VarDeclaration",
+        "Identifier": Identifier,
+        "length": length,
+        "value": value,
+        "type": "reserved"
+      }
+      self.expect("SEMICOLON", "Expected ';' at the end of statement.")
+
+      return declaration
 
   def parse_expr(self):
     return self.parse_assignment_expr()
