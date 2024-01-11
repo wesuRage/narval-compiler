@@ -1,2 +1,3 @@
-resb a[3] = 5;
 byte boceta = 100;
+resb a[3] = 5;
+a = 3;

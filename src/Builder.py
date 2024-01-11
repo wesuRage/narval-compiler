@@ -1,3 +1,6 @@
+import re
+
+
 class Builder:
   def __init__(self):
     self.section_data = ["section .data\n"]
@@ -18,27 +21,35 @@ class Builder:
     self.build_Code(output)
 
   def build_VarDeclaration(self, node, output):
-    if node.get("value"):
-      value = int(node["value"]["value"])
-    else:
-      value = int(node["length"])
+    length = None
 
     id = node["Identifier"]["value"]
     directive = node["directive"]
-
-    expr = f"\t{id} {directive} {value}\n"
-
     type = node["type"]
 
+    if node.get("length"):
+      length = int(node["length"]["value"])
+      if node.get("value"):
+        value = node["value"]["value"]
+        self.section_text.append(f"\tmov [{id}], {value}\n")
+
+    else:
+      value = node["value"]["value"]
+
+
     if type == "constant":
+      expr = f"\t{id} {directive} {value}\n"
       self.section_rodata.append(expr)
-    elif f"{value}".isdigit():
+    elif length:
+      expr = f"\t{id} {directive} {length}\n"
       self.section_bss.append(expr)
     else:
+      expr = f"\t{id} {directive} {value}\n"
       self.section_data.append(expr)
   
-  def build_AssignmentExpr(self, node):
-    pass
+  def build_AssignmentExpr(self, node, output):
+    print("ERROR: Not implemented")
+    exit(1)
 
   def build_Code(self, output):
     out = output.split(".")[0]
@@ -51,7 +62,7 @@ class Builder:
     code += "\n"
     code += "".join(self.section_text)
 
-    code += "\tmov eax, 1\n\txor ebx, ebx\n\tint 0x80\n"
+    code += "\n\tmov eax, 1\n\txor ebx, ebx\n\tint 0x80\n"
     
     with open(f"{out}.asm", "w") as f:
       f.write(code)
