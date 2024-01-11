@@ -31,26 +31,30 @@ class Parser:
     return program
   
   def parse_stmt(self):
+  
+  
+
     match self.at()["type"]:
-      case "BYTE" | "RESB":
+      case "BYTE" | "WORD" | "DWORD" | "QWORD" | "RESB" | "RESW" | "RESD"  | "RESQ":
         return self.parse_var_declaration()
 
       case _:
         return self.parse_expr()
   
   def parse_var_declaration(self):
-    isBytes = self.eat()["type"] == "BYTE"
+    type = self.at()["type"]
+    isConstant = self.eat()["type"] == "BYTE" or self.eat()["type"] == "WORD" or self.eat()["type"] == "DWORD" or self.eat()["type"] =="QWORD"
     Identifier = self.expect("IDENTIFIER", "Identifier expected.")
     
-    if isBytes:
+    if isConstant:
       self.expect("EQUALS", "Expected equals in variable declaration.")
       
       declaration = {
         "NodeType": "VarDeclaration",
         "Identifier": Identifier,
         "value": self.parse_expr(),
-        "type": "constant" if isBytes else "reserved",
-        "directive": "db" if isBytes else "resb"
+        "type": "constant" if isConstant else "reserved",
+        "directive": type
       }
       self.expect("SEMICOLON", "Expected ';' at the end of statement.")
       return declaration
@@ -68,7 +72,7 @@ class Parser:
         "Identifier": Identifier,
         "length": length["value"],
         "type": "reserved",
-        "directive": "resb"
+        "directive": type
       }
       return declaration
  
@@ -81,7 +85,7 @@ class Parser:
         "length": length,
         "value": value,
         "type": "reserved",
-        "directive": "resb"
+        "directive": type
 
       }
       self.expect("SEMICOLON", "Expected ';' at the end of statement.")

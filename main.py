@@ -11,7 +11,7 @@ checker = Checker()
 builder = Builder()
 compiler = Compiler()
 
-argparser = argparse.ArgumentParser(description="Antlantis - compiler for the Poseidon language.")
+argparser = argparse.ArgumentParser(description="Narval - the compiler for the Narval language.")
 argparser.add_argument("-i", "--input", help="Input file to compile")
 argparser.add_argument("-o", "--output", help="Output path")
 args = argparser.parse_args()

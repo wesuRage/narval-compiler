@@ -31,9 +31,18 @@ class Lexer:
       "?": "INTERROGATION",
       "&": "AND",
 
+      # RESERVED KEYWORDS
 
       "byte": "BYTE",
+      "word": "WORD",
+      "dword": "DWORD",
+      "qword": "QWORD",
+
       "resb": "RESB",
+      "resw": "RESW",
+      "resd": "RESD",
+      "resq": "RESQ",
+
       "label": "LABEL"
     }
 
