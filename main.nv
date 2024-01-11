@@ -1,4 +1,1 @@
-byte boceta = 100;
-
-resb a[3] = 5;
-resb tigraoVelho[10] = 255;
+resb a[2] = 5;

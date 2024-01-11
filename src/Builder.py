@@ -43,7 +43,7 @@ class Builder:
     type = node["type"]
 
     if node.get("length"):
-      length = int(node["length"]["value"])
+      length = int(node["length"])
       if node.get("value"):
         value = node["value"]["value"]
 
@@ -68,8 +68,7 @@ class Builder:
 
 
   def build_AssignmentExpr(self, node, output):
-    print("ERROR: Not implemented")
-    exit(1)
+    print(node)
 
 
   def build_Code(self, output):

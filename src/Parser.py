@@ -31,19 +31,16 @@ class Parser:
     return program
   
   def parse_stmt(self):
-  
-  
+    tk_type =  self.at()["type"]
+    if tk_type in ["BYTE", "WORD", "DWORD", "QWORD", "RESB", "RESW", "RESD", "RESQ"]:
+      return self.parse_var_declaration()
 
-    match self.at()["type"]:
-      case "BYTE" | "WORD" | "DWORD" | "QWORD" | "RESB" | "RESW" | "RESD"  | "RESQ":
-        return self.parse_var_declaration()
-
-      case _:
-        return self.parse_expr()
+    else:
+      return self.parse_expr()
   
   def parse_var_declaration(self):
-    type = self.at()["type"]
-    isConstant = self.eat()["type"] == "BYTE" or self.eat()["type"] == "WORD" or self.eat()["type"] == "DWORD" or self.eat()["type"] =="QWORD"
+    type = self.at()["value"]
+    isConstant = self.eat()["type"] in ["BYTE", "WORD", "DWORD", "QWORD"]
     Identifier = self.expect("IDENTIFIER", "Identifier expected.")
     
     if isConstant:
@@ -82,7 +79,7 @@ class Parser:
       declaration = {
         "NodeType": "VarDeclaration",
         "Identifier": Identifier,
-        "length": length,
+        "length": length["value"],
         "value": value,
         "type": "reserved",
         "directive": type
@@ -151,9 +148,9 @@ class Parser:
         value = self.parse_expr()
         self.expect("CPAREN", "Unexpected token inside parenthesised expression. Expected closing parenthesis.")
         return value
-      
+            
       case "EOF":
         raise SyntaxError("Expression expected")
 
       case _:
-        raise SyntaxError(f"Failed to parse: \"{self.eat()['value']}\"")
+        raise SyntaxError(f"Failed to parse: \'{self.eat()['value']}\'")

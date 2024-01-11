@@ -47,11 +47,12 @@ class Checker:
 
       id = node["Identifier"]["value"]
       value = node["value"]
+      directive = node["directive"]
 
       if node["type"] == "constant":
-        return self.env.newName(id, value, True)
+        return self.env.newName(id, value, directive, True)
       else:
-        return self.env.newName(id, value)
+        return self.env.newName(id, value, directive)
     else:
       typevalue = None
       definition = {
@@ -62,8 +63,9 @@ class Checker:
 
       id = node["Identifier"]["value"]
       value = None
+      directive = node["directive"]
 
-      return self.env.newName(id, value)
+      return self.env.newName(id, value, directive)
 
     
   def eval_AssignmentExpr(self, node):

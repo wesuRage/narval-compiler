@@ -17,16 +17,16 @@ class Env:
 
     raise NameError(f"Cannot found name '{name}'")
 
-  def newName(self, name, value, isconst=False):
+  def newName(self, name, value, directive, isconst=False):
     if name in self.names:
       raise NameError(f"Attempt to re-define name '{name}'")
 
-    self.names[name] = value
+    self.names[name] = [value, directive]
     if isconst:
-        self.consts[name] = None
+      self.consts[name] = None
     
 
-  def setName(self, name, value):
+  def setName(self, name, value, directive):
     can_change = False
 
     if name in self.names:
@@ -41,7 +41,7 @@ class Env:
     elif not can_change:
       raise NameError(f"Attempt to set a non-defined name '{name}'")
     elif name in self.names:
-      self.names[name] = value
+      self.names[name] = [value, directive]
     else:
       if self.parent.ispersistant:
-        self.parent.setName(name, value)
+        self.parent.setName(name, value, directive)
