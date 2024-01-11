@@ -8,17 +8,32 @@ class Builder:
     self.section_bss = ["section .bss\n"]
     self.section_text = ["section .text\n", "\tglobal main\n\n", "main:\n"]
 
+
   def getNodeHandler(self, nodetype):
     return Builder.__dict__["build_" + nodetype]
 
+
   def build(self, nodes, output):
     self.getNodeHandler(nodes["NodeType"])(self, nodes, output)
+
 
   def build_Program(self, node, output):
     for stmt in node["body"]:
       self.build(stmt, output)
 
     self.build_Code(output)
+
+
+  def returnSize(self, direct):
+    directives = {
+      "resb": "byte",
+      "resw": "word",
+      "resd": "dword",
+      "resq": "qword",
+    }
+
+    return directives.get(direct)
+  
 
   def build_VarDeclaration(self, node, output):
     length = None
@@ -35,7 +50,7 @@ class Builder:
         if re.match(r'^[+-]?\d+(\.\d+)?$', f"{value}"):
           value = int(value)
 
-        self.section_text.append(f"\tmov [{id}], {value}\n")
+        self.section_text.append(f"\tmov {self.returnSize(directive)} [{id}], {value}\n")
 
     else:
       value = node["value"]["value"]
@@ -50,10 +65,12 @@ class Builder:
     else:
       expr = f"\t{id} {directive} {value}\n"
       self.section_data.append(expr)
-  
+
+
   def build_AssignmentExpr(self, node, output):
     print("ERROR: Not implemented")
     exit(1)
+
 
   def build_Code(self, output):
     out = output.split(".")[0]
@@ -72,3 +89,5 @@ class Builder:
       f.write(code)
     
     f.close()
+
+  

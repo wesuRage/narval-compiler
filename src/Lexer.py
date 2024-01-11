@@ -30,7 +30,8 @@ class Lexer:
       "!": "EXCLAMATION",
       "?": "INTERROGATION",
       "&": "AND",
-      "null": "NULL",
+
+
       "byte": "BYTE",
       "resb": "RESB",
       "label": "LABEL"

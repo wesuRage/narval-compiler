@@ -10,7 +10,7 @@ section .text
 	global main
 
 main:
-	mov [a], 5
+	mov byte [a], 5
 
 	mov eax, 1
 	xor ebx, ebx
