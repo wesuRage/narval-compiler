@@ -31,6 +31,8 @@ class Builder:
       length = int(node["length"]["value"])
       if node.get("value"):
         value = node["value"]["value"]
+        if re.match(r'^[+-]?\d+(\.\d+)?$', f"{value}"):
+          value = int(value)
         self.section_text.append(f"\tmov [{id}], {value}\n")
 
     else:
