@@ -1,4 +1,4 @@
-byte string = "string";
+word string = "string";
 
 resb a[4] = "sexo";
 

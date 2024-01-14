@@ -1,7 +1,7 @@
 section .data
 
 section .rodata
-	string db "string",0
+	string dw "string",0
 
 section .bss
 	a resb 4
