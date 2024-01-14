@@ -14,6 +14,7 @@ main:
 	mov byte [a], "ligre"
 	mov byte [a], 3
 
+exit_program:
 	mov eax, 1
 	xor ebx, ebx
 	int 0x80
