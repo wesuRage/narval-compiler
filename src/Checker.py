@@ -73,12 +73,16 @@ class Checker:
       raise SyntaxError("Invalid expression in assignment")
     
     varname = node["assigne"]["value"]
-    value = node["value"]    
+    value = node["value"]
+    directive = node["directive"]
 
-    self.env.setName(varname, value)
+    self.env.setName(varname, value, directive)
     
 
   def eval_NumericLiteral(self, node):
+    return "number"
+  
+  def eval_String(self, node):
     return "number"
   
   def eval_Identifier(self, node):

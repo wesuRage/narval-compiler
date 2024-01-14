@@ -1,6 +1,7 @@
 class Parser: 
   def __init__(self):
     self.tokens = []
+    self.token_directive = {}
 
   def not_eof(self):
     return self.tokens[0]["type"] != "EOF" 
@@ -46,13 +47,17 @@ class Parser:
     if isConstant:
       self.expect("EQUALS", "Expected equals in variable declaration.")
       
+      value = self.parse_expr()
+
       declaration = {
         "NodeType": "VarDeclaration",
         "Identifier": Identifier,
-        "value": self.parse_expr(),
+        "value": value,
         "type": "constant" if isConstant else "reserved",
         "directive": type
       }
+      self.token_directive[Identifier["value"]] = type
+
       self.expect("SEMICOLON", "Expected ';' at the end of statement.")
       return declaration
 
@@ -71,6 +76,10 @@ class Parser:
         "type": "reserved",
         "directive": type
       }
+
+      self.token_directive[Identifier["value"]] = type
+
+
       return declaration
  
     else:  
@@ -85,9 +94,14 @@ class Parser:
         "directive": type
 
       }
+      self.token_directive[Identifier["value"]] = type
+
+
       self.expect("SEMICOLON", "Expected ';' at the end of statement.")
 
       return declaration
+    
+
 
   def parse_expr(self):
     return self.parse_assignment_expr()
@@ -99,7 +113,7 @@ class Parser:
       self.eat()
       value = self.parse_assignment_expr()
       self.expect("SEMICOLON", "Expected ';' at the end of statement.")
-      return {"NodeType": "AssignmentExpr", "assigne": left, "value": value}
+      return {"NodeType": "AssignmentExpr", "assigne": left, "value": value, "directive": self.token_directive[left["value"]]}
     
     return left
   
@@ -148,7 +162,18 @@ class Parser:
         value = self.parse_expr()
         self.expect("CPAREN", "Unexpected token inside parenthesised expression. Expected closing parenthesis.")
         return value
-            
+      
+      case "DQUOTES":
+        self.eat()
+        string = []
+        while self.at()["type"] != "DQUOTES":
+          string.append(self.at()["value"])
+          self.eat()
+
+        self.expect("DQUOTES", "Expected '\"' at statement.")
+
+        return {"NodeType": "String", "value": " ".join(string)}
+
       case "EOF":
         raise SyntaxError("Expression expected")
 

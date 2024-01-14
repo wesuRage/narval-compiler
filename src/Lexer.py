@@ -61,6 +61,8 @@ class Lexer:
         self.tokens_list.append({"value": lexeme, "type": "NUMBER"})
       elif lexeme.isidentifier():
         self.tokens_list.append({"value": lexeme, "type": "IDENTIFIER"})
+      elif "0x" in lexeme:
+        self.tokens_list.append({"value": lexeme, "type": "HEXNUMBER"})
       elif lexeme != " ":
         raise ValueError(f"Erro léxico: Lexema inesperado: {lexeme}")
 

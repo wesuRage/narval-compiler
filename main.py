@@ -32,4 +32,4 @@ if __name__ == "__main__":
     args.output = args.input
 
   builder.build(parsing, args.output)
-  # compiler.compile(args.output)
+  compiler.compile(args.output)

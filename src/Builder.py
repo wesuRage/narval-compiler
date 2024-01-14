@@ -34,6 +34,15 @@ class Builder:
 
     return directives.get(direct)
   
+  def returnDirective(self, direct):
+    directives = {
+      "byte": "db",
+      "word": "dw",
+      "dword": "dd",
+      "qword": "dq",
+    }
+
+    return directives.get(direct)
 
   def build_VarDeclaration(self, node, output):
     length = None
@@ -46,18 +55,18 @@ class Builder:
       length = int(node["length"])
       if node.get("value"):
         value = node["value"]["value"]
+        self.generate_mov_expr(id, value, directive)
 
-        if re.match(r'^[+-]?\d+(\.\d+)?$', f"{value}"):
-          value = int(value)
-
-        self.section_text.append(f"\tmov {self.returnSize(directive)} [{id}], {value}\n")
 
     else:
-      value = node["value"]["value"]
+      if node["value"]["NodeType"] == "String":
+        value = f"\"{node['value']['value']}\",0"
+      else:
+        value = node["value"]["value"]
 
 
     if type == "constant":
-      expr = f"\t{id} {directive} {value}\n"
+      expr = f"\t{id} {self.returnDirective(directive)} {value}\n"
       self.section_rodata.append(expr)
     elif length:
       expr = f"\t{id} {directive} {length}\n"
@@ -68,21 +77,34 @@ class Builder:
 
 
   def build_AssignmentExpr(self, node, output):
-    print(node)
+    id = node["assigne"]["value"]
+    value = node["value"]["value"]
+    directive = node["directive"]
+
+    self.generate_mov_expr(id, value, directive)
+
+  def generate_mov_expr(self, id, value, directive):
+    if re.match(r'^[+-]?\d+(\.\d+)?$', f"{value}"):
+      value = int(value)
+      self.section_text.append(f"\tmov {self.returnSize(directive)} [{id}], {value}\n")
+    else:
+      self.section_text.append(f"\tmov {self.returnSize(directive)} [{id}], \"{value}\"\n")
 
 
   def build_Code(self, output):
     out = output.split(".")[0]
 
-    code = "".join(self.section_data)
-    code += "\n"
-    code += "".join(self.section_rodata)
-    code += "\n"
-    code += "".join(self.section_bss)
-    code += "\n"
-    code += "".join(self.section_text)
+    code = []
+    code.extend(self.section_data)
+    code.append("\n")
+    code.extend(self.section_rodata)
+    code.append("\n")
+    code.extend(self.section_bss)
+    code.append("\n")
+    code.extend(self.section_text)
+    code.append("\n\tmov eax, 1\n\txor ebx, ebx\n\tint 0x80\n")
 
-    code += "\n\tmov eax, 1\n\txor ebx, ebx\n\tint 0x80\n"
+    code = "".join(code)
     
     with open(f"{out}.asm", "w") as f:
       f.write(code)

@@ -1,1 +1,6 @@
-resb a[2] = 5;
+byte string = "string";
+
+resb a[4] = "sexo";
+
+a = "ligre";
+a = 3;
