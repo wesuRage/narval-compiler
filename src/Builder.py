@@ -1,32 +1,21 @@
 import re
 
-
 class Builder:
   def __init__(self):
-    self.section_data = ["section .data\n"]
+    self.section_data = ["section .data\n", "\tBUILTIN_NEWLINE db 0xA\n"]
     self.section_rodata = ["section .rodata\n"]
     self.section_bss = ["section .bss\n"]
     self.section_text = ["section .text\n", "\tglobal main\n\n", "main:\n"]
+    self.values = {}
 
-
-  def generate_mov_expr(self, id, value, directive):
+  def generate_mov_expr(self, id, value):
     if re.match(r'^[+-]?\d+(\.\d+)?$', f"{value}"):
       value = int(value)
-      self.section_text.append(f"\tmov {self.returnSize(directive)} [{id}], {value}\n")
+      self.section_text.append(f"\tmov qword [{id}], {value}\n")
     else:
-      self.section_text.append(f"\tmov {self.returnSize(directive)} [{id}], \"{value}\"\n")
-
-
-  def returnSize(self, direct):
-    directives = {
-      "resb": "byte",
-      "resw": "word",
-      "resd": "dword",
-      "resq": "qword",
-    }
-
-    return directives.get(direct)
-  
+      for index in range(0, len(value), 4):
+        val = value[index:index + 4]
+        self.section_text.append(f"\tmov qword [{id}+{index}],\"{val}\" \n")
 
   def returnDirective(self, direct):
     directives = {
@@ -54,7 +43,7 @@ class Builder:
     self.build_Code(output)
 
 
-  def build_VarDeclaration(self, node, output):
+  def build_VarDeclaration(self, node, _):
     length = None
 
     id = node["Identifier"]["value"]
@@ -82,15 +71,42 @@ class Builder:
     else:
       expr = f"\t{id} {directive} {value}\n"
       self.section_data.append(expr)
+    self.values[id] = value
 
-
-  def build_AssignmentExpr(self, node, output):
+  def build_AssignmentExpr(self, node, _):
     id = node["assigne"]["value"]
     value = node["value"]["value"]
     directive = node["directive"]
 
     self.generate_mov_expr(id, value, directive)
 
+  def build_Print(self, node, _):
+    printsyscode = '4'
+    arg1 = "eax"
+    descriptor = "1"
+    arg2 = "ebx"
+    
+    arg3 = "ecx"
+    if node["value"]["NodeType"] == "String":
+      value = f'"{node["value"]["value"]}",0'
+    else:
+      value = self.values[node["value"]["value"]]
+    
+    print(value)
+    size = len(value[1:-3]) + 1
+
+    arg4 = "edx"
+    self.section_text.append(f"\n\tmov {arg1}, {printsyscode}\n")
+    self.section_text.append(f"\tmov {arg2}, {descriptor}\n")
+    self.section_text.append(f"\tmov {arg3}, {node['value']['value']}\n")
+    self.section_text.append(f"\tmov {arg4}, {size}\n")
+    self.section_text.append("\tint 0x80\n")
+
+    self.section_text.append(f"\n\tmov {arg1}, {printsyscode}\n")
+    self.section_text.append(f"\tmov {arg2}, {descriptor}\n")
+    self.section_text.append(f"\tmov {arg3}, BUILTIN_NEWLINE\n")
+    self.section_text.append(f"\tmov {arg4}, {size}\n")
+    self.section_text.append("\tint 0x80\n")
 
   def build_Code(self, output):
     out = output.split(".")[0]

@@ -12,9 +12,9 @@ class Checker:
         'has-': True,
         'has/': True,
         'has*': True,
-        'has%': True,
+        'has%': True
       },
-      'null': {
+      'string': {
         'type': 'native',
         'has+': False,
         'has-': False,
@@ -30,7 +30,9 @@ class Checker:
   def eval(self, node):
     handler = self.getNodeHandler(node["NodeType"])
     return handler(self, node)
-
+  
+  def eval_Print(self, node):
+    self.eval(node["value"])
 
   def eval_Program(self, node):
     for stmt in node["body"]:
@@ -67,7 +69,6 @@ class Checker:
 
       return self.env.newName(id, value, directive)
 
-    
   def eval_AssignmentExpr(self, node):
     if node["assigne"]["NodeType"] != "Identifier":
       raise SyntaxError("Invalid expression in assignment")
@@ -83,7 +84,7 @@ class Checker:
     return "number"
   
   def eval_String(self, node):
-    return "number"
+    return "string"
   
   def eval_Identifier(self, node):
     return self.env.getName(node["value"])

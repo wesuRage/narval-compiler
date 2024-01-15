@@ -36,9 +36,22 @@ class Parser:
     if tk_type in ["BYTE", "WORD", "DWORD", "QWORD", "RESB", "RESW", "RESD", "RESQ"]:
       return self.parse_var_declaration()
 
+    elif tk_type == "PRINT":
+      return self.parse_print_stmt() #perae que bugou mano olha o di
     else:
       return self.parse_expr()
   
+  def parse_print_stmt(self):
+    self.eat()
+    self.expect("OPAREN",  "Expected '(' at print statement")
+
+    value_to_print = self.parse_primary_expr()
+
+    self.expect("CPAREN",  "Expected ')' at print statement")
+    self.expect("SEMICOLON",  "Expected ';' at the end of statement")
+    return {"NodeType": "Print", "value": value_to_print}
+
+
   def parse_var_declaration(self):
     type = self.at()["value"]
     isConstant = self.eat()["type"] in ["BYTE", "WORD", "DWORD", "QWORD"]
@@ -56,7 +69,7 @@ class Parser:
         "type": "constant" if isConstant else "reserved",
         "directive": type
       }
-      self.token_directive[Identifier["value"]] = type
+      self.token_directive[Identifier["value"]] = type #adicionei a diretiva a uma lista
 
       self.expect("SEMICOLON", "Expected ';' at the end of statement.")
       return declaration

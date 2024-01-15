@@ -43,7 +43,8 @@ class Lexer:
       "resd": "RESD",
       "resq": "RESQ",
 
-      "label": "LABEL"
+      "label": "LABEL",
+      "print": "PRINT"
     }
 
     self.tokens_list = []

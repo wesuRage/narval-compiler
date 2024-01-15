@@ -1,6 +1,2 @@
-word string = "string";
-
-resb a[4] = "sexo";
-
-a = "ligre";
-a = 3;
+byte a = 3;
+print(a);
