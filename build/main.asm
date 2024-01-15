@@ -1,18 +1,27 @@
 section .data
+	BUILTIN_NEWLINE db 0xA
 
 section .rodata
-	string dw "string",0
+	a db "3",0
 
 section .bss
-	a resb 4
 
 section .text
 	global main
 
 main:
-	mov byte [a], "sexo"
-	mov byte [a], "ligre"
-	mov byte [a], 3
+
+	mov eax, 4
+	mov ebx, 1
+	mov ecx, a
+	mov edx, 2
+	int 0x80
+
+	mov eax, 4
+	mov ebx, 1
+	mov ecx, BUILTIN_NEWLINE
+	mov edx, 2
+	int 0x80
 
 exit_program:
 	mov eax, 1
