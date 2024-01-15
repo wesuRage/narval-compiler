@@ -29,4 +29,9 @@ byte constante = "bla bla bla";
 constante = "olá"; // não permitido
 ```
 
+Imprimir na tela:
 
+````
+byte hello = "Hello World!";
+print(hello);
+```
