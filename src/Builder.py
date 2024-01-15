@@ -8,14 +8,17 @@ class Builder:
     self.section_text = ["section .text\n", "\tglobal main\n\n", "main:\n"]
     self.values = {}
 
+
   def generate_mov_expr(self, id, value):
-    if re.match(r'^[+-]?\d+(\.\d+)?$', f"{value}"):
+    if re.match(r'^[+-]?\d+(\.\d+)?$', str(value)):
       value = int(value)
       self.section_text.append(f"\tmov qword [{id}], {value}\n")
     else:
+      self.section_text.append("\n")
       for index in range(0, len(value), 4):
         val = value[index:index + 4]
-        self.section_text.append(f"\tmov qword [{id}+{index}],\"{val}\" \n")
+        self.section_text.append(f"\tmov qword [{id}+{index}], \"{val}\" \n")
+
 
   def returnDirective(self, direct):
     directives = {
@@ -54,13 +57,13 @@ class Builder:
       length = int(node["length"])
       if node.get("value"):
         value = node["value"]["value"]
-        self.generate_mov_expr(id, value, directive)
+        self.generate_mov_expr(id, value)
 
     else:
       if node["value"]["NodeType"] == "String":
         value = f"\"{node['value']['value']}\",0"
       else:
-        value = node["value"]["value"]
+        value = int(node["value"]["value"])
 
     if type == "constant":
       expr = f"\t{id} {self.returnDirective(directive)} {value}\n"
@@ -73,12 +76,13 @@ class Builder:
       self.section_data.append(expr)
     self.values[id] = value
 
+
   def build_AssignmentExpr(self, node, _):
     id = node["assigne"]["value"]
     value = node["value"]["value"]
-    directive = node["directive"]
 
-    self.generate_mov_expr(id, value, directive)
+    self.generate_mov_expr(id, value)
+
 
   def build_Print(self, node, _):
     printsyscode = '4'
@@ -89,11 +93,12 @@ class Builder:
     arg3 = "ecx"
     if node["value"]["NodeType"] == "String":
       value = f'"{node["value"]["value"]}",0'
+      size = len(value[1:-3]) + 1
     else:
-      value = self.values[node["value"]["value"]]
-    
-    print(value)
-    size = len(value[1:-3]) + 1
+      value = str(self.values[node["value"]["value"]])
+      size = 0
+      for _ in value:
+        size+=1
 
     arg4 = "edx"
     self.section_text.append(f"\n\tmov {arg1}, {printsyscode}\n")
@@ -105,8 +110,9 @@ class Builder:
     self.section_text.append(f"\n\tmov {arg1}, {printsyscode}\n")
     self.section_text.append(f"\tmov {arg2}, {descriptor}\n")
     self.section_text.append(f"\tmov {arg3}, BUILTIN_NEWLINE\n")
-    self.section_text.append(f"\tmov {arg4}, {size}\n")
+    self.section_text.append(f"\tmov {arg4}, 1\n")
     self.section_text.append("\tint 0x80\n")
+
 
   def build_Code(self, output):
     out = output.split(".")[0]

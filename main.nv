@@ -1,2 +1,7 @@
-byte a = 3;
-print(a);
+word numero_zero = 48;
+byte oi = "olá mundo";
+resd tigre[10] = "tigrinho";
+
+print(oi);
+print(tigre);
+print(numero_zero);
