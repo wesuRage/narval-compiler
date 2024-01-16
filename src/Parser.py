@@ -41,16 +41,6 @@ class Parser:
     else:
       return self.parse_expr()
   
-  def parse_print_stmt(self):
-    self.eat()
-    self.expect("OPAREN",  "Expected '(' at print statement")
-
-    value_to_print = self.parse_primary_expr()
-
-    self.expect("CPAREN",  "Expected ')' at print statement")
-    self.expect("SEMICOLON",  "Expected ';' at the end of statement")
-    return {"NodeType": "Print", "value": value_to_print}
-
 
   def parse_var_declaration(self):
     type = self.at()["value"]
@@ -85,7 +75,7 @@ class Parser:
       declaration = {
         "NodeType": "VarDeclaration",
         "Identifier": Identifier,
-        "length": length["value"],
+        "length": int(length["value"]),
         "type": "reserved",
         "directive": type
       }
@@ -101,7 +91,7 @@ class Parser:
       declaration = {
         "NodeType": "VarDeclaration",
         "Identifier": Identifier,
-        "length": length["value"],
+        "length": int(length["value"]),
         "value": value,
         "type": "reserved",
         "directive": type
@@ -120,7 +110,7 @@ class Parser:
     return self.parse_assignment_expr()
 
   def parse_assignment_expr(self):
-    left = self.parse_additive_expr()
+    left = self.parse_object_expr()
 
     if self.at()["type"] == "EQUALS":
       self.eat()
@@ -129,6 +119,27 @@ class Parser:
       return {"NodeType": "AssignmentExpr", "assigne": left, "value": value, "directive": self.token_directive[left["value"]]}
     
     return left
+  
+  def parse_object_expr(self):
+    if self.at()["type"] != "OBRACE":
+      return self.parse_additive_expr()
+    
+    self.eat()
+
+    properties = []
+    
+    while self.not_eof() and self.at()["type"] != "CBRACE":
+      key = self.expect("IDENTIFIER", "Identifier key expected on object literal")["value"]
+      self.expect("COLON", "Missing colon following object expression.")
+      value = self.parse_expr()
+
+      properties.append({"key": key, "value": value})
+
+      if self.at()["type"] != "CBRACE":
+        self.expect("COMMA", "Expected ',' or '}' on object literal.")
+
+    self.expect("CBRACE", "Expected '}' on object literal")
+    return {"NodeType": "ObjectLiteral", "properties": properties}
   
   def parse_additive_expr(self):
     left = self.parse_multiplicative_expr()
@@ -146,11 +157,11 @@ class Parser:
     return left
 
   def parse_multiplicative_expr(self):
-    left = self.parse_primary_expr()
+    left = self.parse_call_member_expr()
 
     while self.at()["value"] == "*" or self.at()["value"] == "/":
       operator = self.eat()["value"]
-      right = self.parse_primary_expr()
+      right = self.parse_call_member_expr()
       left = {
         "NodeType": "BinaryExpr",
         "left": left,
@@ -160,6 +171,72 @@ class Parser:
 
     return left
   
+  
+  def parse_call_member_expr(self):
+    member = self.parse_member_expr()
+
+    if self.at()["type"] == "OPAREN":
+      return self.parse_call_expr(member)
+    
+    return member
+
+
+  def parse_call_expr(self, caller):
+    call_expr = {"NodeType": "CallExpr", "caller": caller, "args": self.parse_args()}
+
+    if self.at()["type"] == "OPAREN":
+      call_expr = self.parse_call_expr(call_expr)
+
+    return call_expr
+
+
+  def parse_args(self):
+    self.expect("OPAREN", "Expected '(' at expression.")
+    
+    args = [] if self.at()["type"] == "CPAREN" else self.parse_arguments_list()
+
+    self.expect("CPAREN", "'(' was not closed")
+
+    return args
+
+
+  def parse_arguments_list(self):
+    args = [self.parse_assignment_expr()]
+
+    while self.at()["type"] == "COMMA" and self.eat():
+      args.append(self.parse_assignment_expr())
+
+    return args
+
+  
+  def parse_member_expr(self):
+    object = self.parse_primary_expr()
+
+    while self.at()["type"] == "DOT" or self.at()["type"] == "OBRACKET":
+      operator = self.eat()
+      property = None
+      computed = False
+
+      if operator["type"] == "DOT":
+        property = self.parse_primary_expr()
+
+        if property["NodeType"] != "Identifier":
+          raise SyntaxError("Cannot use dot operator without an identifier.")
+      else:
+        computed = True
+        property = self.parse_expr()
+        self.expect("CBRACKET", "'[' was not closed.")
+
+      object = {
+        "NodeType": "MemberExpr",
+        "object": object,
+        "property": property,
+        "computed": computed
+      }
+    
+    return object
+
+
   def parse_primary_expr(self):
     tk = self.at()["type"]
 
@@ -170,23 +247,15 @@ class Parser:
       case "NUMBER":
         return {"NodeType": "NumericLiteral", "value": float(self.eat()["value"])}
             
-      case "OPAREN":
+      case "STRING":
+        return {"NodeType": "String", "value": self.eat()["value"]}
+      
+      case "OPAREN": 
         self.eat()
         value = self.parse_expr()
         self.expect("CPAREN", "Unexpected token inside parenthesised expression. Expected closing parenthesis.")
         return value
-      
-      case "DQUOTES":
-        self.eat()
-        string = []
-        while self.at()["type"] != "DQUOTES":
-          string.append(self.at()["value"])
-          self.eat()
-
-        self.expect("DQUOTES", "Expected '\"' at statement.")
-
-        return {"NodeType": "String", "value": " ".join(string)}
-
+    
       case "EOF":
         raise SyntaxError("Expression expected")
 

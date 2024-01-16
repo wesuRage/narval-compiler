@@ -24,19 +24,20 @@ class Checker:
       }
     }
 
+
   def getNodeHandler(self, nodetype):
     return Checker.__dict__["eval_" + nodetype]
+
 
   def eval(self, node):
     handler = self.getNodeHandler(node["NodeType"])
     return handler(self, node)
   
-  def eval_Print(self, node):
-    self.eval(node["value"])
 
   def eval_Program(self, node):
     for stmt in node["body"]:
       self.eval(stmt)
+
 
   def eval_VarDeclaration(self, node):
     if node.get("value"):
@@ -69,6 +70,7 @@ class Checker:
 
       return self.env.newName(id, value, directive)
 
+
   def eval_AssignmentExpr(self, node):
     if node["assigne"]["NodeType"] != "Identifier":
       raise SyntaxError("Invalid expression in assignment")
@@ -78,16 +80,30 @@ class Checker:
     directive = node["directive"]
 
     self.env.setName(varname, value, directive)
-    
+
+
+  def eval_ObjectLiteral(self, node):
+    keys = []
+    for prop in node["properties"]:
+      if prop["key"] not in keys:
+        keys.append(prop["key"])
+      else:
+        raise SyntaxError(f"Key '{prop['key']}' already defined in scope")
+      
+      self.eval(prop["value"])
+
 
   def eval_NumericLiteral(self, node):
     return "number"
   
+
   def eval_String(self, node):
     return "string"
   
+
   def eval_Identifier(self, node):
     return self.env.getName(node["value"])
+
 
   def eval_BinaryExpr(self, node):
     left = node["left"]

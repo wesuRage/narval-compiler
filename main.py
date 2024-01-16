@@ -1,4 +1,6 @@
+#!/usr/bin/env python3
 import argparse
+import json
 from src.Lexer import Lexer
 from src.Parser import Parser
 from src.Checker import Checker
@@ -22,14 +24,17 @@ if __name__ == "__main__":
     exit(1)
 
   with open(args.input, "r") as f:
+  # with open("../main.nv", "r") as f:
     code = f.read()
     
   tokens = lexer.tokenize(code)
   parsing = parser.produceAST(tokens)
-  checker.eval(parsing)
 
-  if not args.output:
-    args.output = args.input
+  print(json.dumps(parsing, indent=2))
+  # checker.eval(parsing)
 
-  builder.build(parsing, args.output)
-  compiler.compile(args.output)
+  # if not args.output:
+  #   args.output = args.input
+
+  # builder.build(parsing, args.output)
+  # compiler.compile(args.output)
