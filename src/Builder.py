@@ -71,6 +71,23 @@ class Builder:
     self.build_Code(output)
 
 
+  def build_ObjectProperties(self, props, prefix, directive, ident=1):
+    self.section_data.append("\t"*ident+f"{prefix}:\n")
+    
+    for prop in props:
+      key = prop['key']
+      value = prop['value']
+
+      if value['NodeType'] == "ObjectLiteral":
+        pre = f"{prefix}_{key}"
+        self.build_ObjectProperties(value["properties"], pre, directive, ident+1)
+      else:
+        val = value["value"]
+        if isinstance(val, str):
+          val = val + ',0'
+        self.section_data.append("\t"*(ident+1)+f"{prefix}_{key} {self.returnDirective(directive)} {val}\n")
+
+
   def build_VarDeclaration(self, node, _):
     length = None
 
@@ -86,17 +103,30 @@ class Builder:
 
     else:
       if node["value"]["NodeType"] == "String":
-        value = f"\"{node['value']['value']}\",0"
+        value = f"{node['value']['value']},0"
+        if type == "constant":
+          expr = f"\t{id} {self.returnDirective(directive)} {value}\n"
+          self.section_data.append(expr)
+        elif length:
+          expr = f"\t{id} {directive} {length}\n"
+          self.section_bss.append(expr)
+        self.values[id] = value
+
+      elif node["value"]["NodeType"] == "ObjectLiteral":
+        self.section_data.append("\n")
+        self.build_ObjectProperties(node["value"]["properties"], id, directive)
+        
       else:
         value = int(node["value"]["value"])
+        if type == "constant":
+          expr = f"\t{id} {self.returnDirective(directive)} {value}\n"
+          self.section_data.append(expr)
+        elif length:
+          expr = f"\t{id} {directive} {length}\n"
+          self.section_bss.append(expr)
+        self.values[id] = value
 
-    if type == "constant":
-      expr = f"\t{id} {self.returnDirective(directive)} {value}\n"
-      self.section_data.append(expr)
-    elif length:
-      expr = f"\t{id} {directive} {length}\n"
-      self.section_bss.append(expr)
-    self.values[id] = value
+    
 
 
   def build_AssignmentExpr(self, node, _):
@@ -113,7 +143,8 @@ class Builder:
     code = []
     code.extend(self.section_data)
     code.append("\n")
-    code.extend(self.section_bss)
+    if len(self.section_bss) > 1:
+      code.extend(self.section_bss)
     code.append("\n")
     code.extend(self.section_text)
     code.append("\nexit_program:\n\tmov eax, 1\n\txor ebx, ebx\n\tint 0x80\n")

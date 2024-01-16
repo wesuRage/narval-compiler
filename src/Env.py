@@ -1,26 +1,11 @@
-def MK_BOOL(bool=True):
-  return {"type": "boolean", "value": bool}
-
-def MK_NULL():
-  return {"type": "null", "value": "null"}
-
-
-def setupGlobalScope(scope):
-  scope.newName("true", MK_BOOL(True), None, True)
-  scope.newName("false", MK_BOOL(False), None, True)
-  scope.newName("null", MK_NULL, None, True)
-
 class Env:
   def __init__(self, parent=None, ispersistant=False) -> None:
-    globalScope = True if parent else False
     self.parent = parent
     self.names = {}
     self.consts = {}
     self.external_names = {}
     self.ispersistant = ispersistant
 
-    if globalScope:
-      setupGlobalScope(self)
 
   def getName(self, name):
     if name in self.names:
@@ -32,6 +17,7 @@ class Env:
       return result
 
     raise NameError(f"Cannot found name '{name}'")
+
 
   def newName(self, name, value, directive, isconst=False):
     if name in self.names:

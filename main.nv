@@ -1,2 +1,9 @@
-byte hello = "big black cock"; 
-byte oi = "oi";
+byte i = {
+  x: 10.1,
+  y: "string",
+  z: {
+    var: "string2"
+  },
+  w: 8
+};
+

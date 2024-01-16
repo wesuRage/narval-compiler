@@ -30,11 +30,11 @@ if __name__ == "__main__":
   tokens = lexer.tokenize(code)
   parsing = parser.produceAST(tokens)
 
-  print(json.dumps(parsing, indent=2))
-  # checker.eval(parsing)
+  # print(json.dumps(parsing, indent=2))
+  checker.eval(parsing)
 
-  # if not args.output:
-  #   args.output = args.input
+  if not args.output:
+    args.output = args.input
 
-  # builder.build(parsing, args.output)
+  builder.build(parsing, args.output)
   # compiler.compile(args.output)

@@ -5,6 +5,8 @@ class Checker:
     self.envs = [Env(ispersistant=True)]
     self.env = self.envs[0]
 
+    self.objectKeys = []
+
     self.typedefs = {
       'number': {
         'type': 'native',
@@ -92,7 +94,6 @@ class Checker:
       
       self.eval(prop["value"])
 
-
   def eval_NumericLiteral(self, node):
     return "number"
   
@@ -104,7 +105,30 @@ class Checker:
   def eval_Identifier(self, node):
     return self.env.getName(node["value"])
 
+  def eval_MemberExpr(self, node):
+    if isinstance(self.get(node["object"]), list):
+      target = self.get(node["object"])[0]
+    else:
+      target = self.get(node["object"])
 
+    #print("OOOOOOOOOOOOOOOOO MEU PAI QUE ABENÇOE ESSE PRINT DE DEBUG AMEM", target)
+    prop = node["property"]
+    if node["computed"]:
+      self.eval(prop)
+    propindex = 0
+    for pair in target["properties"]:
+      if pair["key"] == prop["value"]:
+        return target["properties"][propindex]["value"]
+      propindex += 1
+    else:
+      raise AttributeError("Cannot find property in object")
+
+  def get(self, node):
+    if node["NodeType"] == "Identifier":
+      return self.env.getName(node["value"])
+    return self.eval(node)
+    
+  
   def eval_BinaryExpr(self, node):
     left = node["left"]
     right = node["right"]
