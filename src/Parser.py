@@ -35,10 +35,63 @@ class Parser:
     tk_type =  self.at()["type"]
     if tk_type in ["BYTE", "WORD", "DWORD", "QWORD", "RESB", "RESW", "RESD", "RESQ"]:
       return self.parse_var_declaration()
+    
+    elif tk_type == "ADD":
+      return self.parse_add_stmt()
+
+    elif tk_type == "LABEL":
+      return self.parse_function_declaration()
+  
+    elif tk_type == "PRINT":
+      return self.parse_print()
 
     else:
       return self.parse_expr()
   
+
+  def parse_add_stmt(self):
+    self.eat()
+    self.expect("LT", "Expected '<' at statement.")
+    file = ""
+
+    while self.at()["type"] != "EOF" and self.at()["type"] != "GT":
+      file += self.eat()["value"]
+
+    self.expect("GT", "Expected '>' at statement.")
+
+    return {"NodeType": "Add", "file": file}
+
+
+  def parse_print(self):
+    self.eat()
+    args = self.parse_args()
+    self.expect("SEMICOLON", "Expected ';'")
+    return {"NodeType": "Print", "args": args}
+
+
+  def parse_function_declaration(self):
+    self.eat()
+    name = self.expect("IDENTIFIER", "Expected function name following 'label' keyword")["value"]
+    
+    args = self.parse_args()
+    params = []
+
+    for arg in args:
+      if arg["NodeType"] != "Identifier":
+        raise SyntaxError("Expected identifier as a paramenter. Instead received: ", arg)
+      
+      params.append(arg["value"])
+
+    self.expect("OBRACE", "Expected function body on declaration")
+    body = []
+
+    while self.at()["type"] != "EOF" and self.at()["type"] != "CBRACE":
+      body.append(self.parse_stmt())
+    
+    self.expect("CBRACE", "Expected '}' at the end of function")
+
+    return {"NodeType": "FunctionDeclaration", "name": name, "parameters": params, "body": body}
+
 
   def parse_var_declaration(self):
     type = self.at()["value"]
@@ -103,9 +156,9 @@ class Parser:
       return declaration
     
 
-
   def parse_expr(self):
     return self.parse_assignment_expr()
+
 
   def parse_assignment_expr(self):
     left = self.parse_object_expr()
@@ -114,8 +167,12 @@ class Parser:
       self.eat()
       value = self.parse_assignment_expr()
       self.expect("SEMICOLON", "Expected ';' at the end of statement.")
-      return {"NodeType": "AssignmentExpr", "assigne": left, "value": value, "directive": self.token_directive[left["value"]]}
-    
+      
+      if left.get("value"):
+        return {"NodeType": "AssignmentExpr", "assigne": left, "value": value, "directive": self.token_directive[left["value"]]}
+      else:
+        return {"NodeType": "AssignmentExpr", "assigne": left, "value": value, "directive": "resq"}
+
     return left
   
   def parse_object_expr(self):
@@ -240,13 +297,13 @@ class Parser:
 
     match tk:
       case "IDENTIFIER":
-        return {"NodeType": "Identifier", "value": self.eat()["value"]}
+        return {"NodeType": "Identifier", "value": self.eat()["value"], 'singular': True}
       
       case "NUMBER":
-        return {"NodeType": "NumericLiteral", "value": float(self.eat()["value"])}
+        return {"NodeType": "NumericLiteral", "value": float(self.eat()["value"]), 'singular': True}
             
       case "STRING":
-        return {"NodeType": "String", "value": self.eat()["value"]}
+        return {"NodeType": "String", "value": self.eat()["value"], 'singular': True}
       
       case "OPAREN": 
         self.eat()

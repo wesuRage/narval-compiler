@@ -1,13 +1,12 @@
+%include "io.inc"
+
+NEWLINE equ 0xA
+NULL equ 0x0
+TRUE equ 0x1
+FALSE equ 0x0
+
 section .data
-	BUILTIN_NEWLINE db 0xA
-
-	i:
-		i_x db 10.1
-		i_y db "string",0
-		i_z:
-			i_z_var db "string2",0
-		i_w db 8.0
-
+	num db {'NodeType': 'BinaryExpr', 'left': {'NodeType': 'NumericLiteral', 'value': 3.0, 'singular': True}, 'right': {'NodeType': 'NumericLiteral', 'value': 5.0, 'singular': True}, 'operator': '+'}
 
 section .text
 	global main

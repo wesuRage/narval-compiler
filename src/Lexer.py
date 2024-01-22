@@ -30,12 +30,22 @@ class Lexer:
         "?": "INTERROGATION",
         "&": "AND"
       },
+
       "keywords": {
+        "add": "ADD",
         "resb": "RESB",
         "resw": "RESW",
         "resd": "RESD",
         "resq": "RESQ",
-        "byte": "BYTE"
+
+        "byte": "BYTE",
+        "word": "WORD",
+        "dword": "DWORD",
+        "qword": "QWORD",
+
+        "label": "LABEL",
+
+        "print": "PRINT",
       }
     }
 

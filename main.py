@@ -24,7 +24,7 @@ if __name__ == "__main__":
     exit(1)
 
   with open(args.input, "r") as f:
-  # with open("../main.nv", "r") as f:
+  # with open("main.nv", "r") as f:
     code = f.read()
     
   tokens = lexer.tokenize(code)
@@ -37,4 +37,5 @@ if __name__ == "__main__":
     args.output = args.input
 
   builder.build(parsing, args.output)
-  # compiler.compile(args.output)
+  # builder.build(parsing, "main.nv")
+  compiler.compile(args.output)

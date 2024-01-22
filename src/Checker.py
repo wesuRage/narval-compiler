@@ -5,7 +5,8 @@ class Checker:
     self.envs = [Env(ispersistant=True)]
     self.env = self.envs[0]
 
-    self.objectKeys = []
+    self.objectKeys = {}
+    self.adds = []
 
     self.typedefs = {
       'number': {
@@ -41,6 +42,30 @@ class Checker:
       self.eval(stmt)
 
 
+  def push_env(self):
+    self.envs.append(Env(parent=self.envs[-1]))
+    self.env = self.envs[-1]
+
+  def pop_env(self):
+    self.envs.pop()
+    self.env = self.envs[-1]
+
+  def eval_FunctionDeclaration(self, node):
+    previousObjects = self.objectKeys
+    self.push_env()
+    self.objectKeys = {}
+
+    for param in node['parameters']:
+      self.env.newName(param, {"argumentobj": 1}, "byte")
+    name = node["name"]
+    body = node["body"]
+    for stmt in body:
+      self.eval(stmt)
+    self.env.newName(name, body, None)
+    
+    self.pop_env()
+    self.objectKeys = previousObjects
+
   def eval_VarDeclaration(self, node):
     if node.get("value"):
       typevalue = self.eval(node["value"])
@@ -56,6 +81,7 @@ class Checker:
 
       if node["type"] == "constant":
         return self.env.newName(id, value, directive, True)
+        
       else:
         return self.env.newName(id, value, directive)
     else:
@@ -74,25 +100,50 @@ class Checker:
 
 
   def eval_AssignmentExpr(self, node):
-    if node["assigne"]["NodeType"] != "Identifier":
-      raise SyntaxError("Invalid expression in assignment")
+    if node["assigne"]["NodeType"] != "Identifier" and node["assigne"]["NodeType"] != "MemberExpr":
+      raise SyntaxError("Invalid expression in assignment. Identifier or member expression only.")
+
+    target = node["assigne"]
+    targetnodetype = target["NodeType"]
+    if targetnodetype == "Identifier":
+      target = target["value"]
     
-    varname = node["assigne"]["value"]
     value = node["value"]
     directive = node["directive"]
 
-    self.env.setName(varname, value, directive)
+    if targetnodetype == 'Identifier':
+      self.env.setName(target, value, directive)
+    else:
+      targ = self.get(target["object"])
+      if "properties" in targ:
+        for prop in targ["properties"]:
+          if prop["key"] == target["property"]["value"]:
+            break
+        else:
+          raise AttributeError(f"Attempt to set a non-defined property '{target['property']['value']}'.")
+        
+
+
+  def eval_ObjectLiteralProperties(self, node, keys):
+    for prop in node["properties"]:
+      if prop["key"] not in keys:
+        keys.append(prop["key"])
+
+        if prop["value"].get("value"):
+          self.objectKeys[prop["key"]] = prop["value"]["value"]
+        else: 
+          newkeys = []
+          self.objectKeys[prop["key"]] = newkeys
+          self.eval_ObjectLiteralProperties(prop["value"], newkeys) 
+      else:
+        raise AttributeError(f"Key '{prop['key']}' already defined in this object.")
+      self.eval(prop["value"])
 
 
   def eval_ObjectLiteral(self, node):
     keys = []
-    for prop in node["properties"]:
-      if prop["key"] not in keys:
-        keys.append(prop["key"])
-      else:
-        raise SyntaxError(f"Key '{prop['key']}' already defined in scope")
+    self.eval_ObjectLiteralProperties(node, keys)
       
-      self.eval(prop["value"])
 
   def eval_NumericLiteral(self, node):
     return "number"
@@ -111,7 +162,6 @@ class Checker:
     else:
       target = self.get(node["object"])
 
-    #print("OOOOOOOOOOOOOOOOO MEU PAI QUE ABENÇOE ESSE PRINT DE DEBUG AMEM", target)
     prop = node["property"]
     if node["computed"]:
       self.eval(prop)
@@ -121,14 +171,34 @@ class Checker:
         return target["properties"][propindex]["value"]
       propindex += 1
     else:
-      raise AttributeError("Cannot find property in object")
+      raise AttributeError(f"Cannot find property '{prop['value']}' in object.")
+
 
   def get(self, node):
     if node["NodeType"] == "Identifier":
       return self.env.getName(node["value"])
     return self.eval(node)
-    
   
+
+  def eval_Add(self, node):
+    if node["file"] not in self.adds:
+      self.adds.append(node["file"])
+    else:
+      raise NameError(f"File '{node['file']}' already imported.")
+
+  def eval_Print(self, node):
+    for arg in node["args"]:
+      self.eval(arg)
+
+
+  def eval_CallExpr(self, node):
+    id = node["caller"]["value"]
+
+    for arg in node["args"]:
+      self.eval(arg)
+
+    return self.env.getName(id)
+
   def eval_BinaryExpr(self, node):
     left = node["left"]
     right = node["right"]
@@ -137,7 +207,7 @@ class Checker:
     rtype = self.eval(right)
 
     if not self.supportsOp(ltype, node["operator"]):
-      raise TypeError(f"'{ltype}' doesnt supports operation '{node['operator']}'")
+      raise TypeError(f"'{ltype}' doesnt supports operation '{node['operator']}'.")
     
     if ltype == "null" or rtype == "null":
       raise TypeError("Operations with null values are not allowed.")

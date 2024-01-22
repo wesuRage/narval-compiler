@@ -6,6 +6,13 @@ class Env:
     self.external_names = {}
     self.ispersistant = ispersistant
 
+    self.newName("NULL", "NULL", None, True)
+    self.newName("TRUE", "TRUE", None, True)
+    self.newName("FALSE", "FALSE", None, True)
+
+    self.newName("print", "print", None, True)
+    self.newName("strlen", "strlen", None, True)
+    self.newName("int2str", "int2str", None, True)
 
   def getName(self, name):
     if name in self.names:
@@ -41,7 +48,7 @@ class Env:
     if name in self.consts:
       raise NameError(f"Attempt to change a constant name '{name}'")
     elif not can_change:
-      raise NameError(f"Attempt to set a non-defined name '{name}'")
+        raise NameError(f"Attempt to set a non-defined name '{name}'")
     elif name in self.names:
       self.names[name] = [value, directive]
     else:

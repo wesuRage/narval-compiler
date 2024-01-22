@@ -24,7 +24,7 @@ class Compiler:
         print("ABORTING...")
         exit(1)
 
-    os.system(f"nasm -felf64 {out}.asm -o {out}.o")
+    os.system(f"nasm -felf64 {out}.asm -o {out}.o -i src/assembly/")
     os.system(f"gcc -no-pie {out}.o -o {out} -z noexecstack")
     # os.system(f"rm {out}.asm")
     os.system(f"rm {out}.o")
