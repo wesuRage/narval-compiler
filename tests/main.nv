@@ -1,23 +1,11 @@
-qword <Integer | Decimal> :: label:hipotenusa:(qword <Integer | Decimal> :: a, qword <Integer | Decimal> :: b) => {
-  qword <Integer | Decimal> :: x << ((a^2 + b^2) ^ (1/2));
-
-  return x;
-}
-
-word Object<Integer | Decimal> :: valores << {
-  primeiro: {
-    a: 3,
-    b: 4
-  },
-  segundo: {
-    a: 3.14,
-    b: 2.71
-  }
-};
-
-word Object<Integer | Decimal> :: hipotenusas << {
-  primeiro: hipotenusa:(valores.primeiro.a, valores.primeiro.b),
-  segundo: hipotenusa:(valores.segundo.a, valores.segundo.b)
-};
-
-export:(hipotenusa, hipotenusas);
+0
+2.
+.2
+1.0
+3.14
+3e10
+3e+10
+3e-10
+0xff
+0o017
+0B01101110

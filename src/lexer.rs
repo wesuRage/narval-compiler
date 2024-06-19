@@ -137,6 +137,7 @@ impl TokenDefinitions {
         literals.insert("\\", TokenType::Backslash);
         literals.insert("|", TokenType::Pipe);
         literals.insert("||", TokenType::Or);
+        literals.insert("_", TokenType::UndefinedType);
         literals.insert("!", TokenType::Exclamation);
         literals.insert("?", TokenType::QuestionMark);
         literals.insert("&&", TokenType::And);
@@ -303,7 +304,7 @@ impl<'a> Lexer<'a> {
                 // Se o caractere não for um literal, verifica se é um número, um identificador ou um erro
                 if char.is_digit(10) {
                     // Se o caractere for um dígito, escaneia um número
-                    self.scan_number();
+                    self.scan_number(char);
                 } else if char.is_alphabetic() || char == '_' {
                     // Se o caractere for alfabético ou um sublinhado, escaneia um identificador
                     self.scan_identifier();
@@ -347,7 +348,7 @@ impl<'a> Lexer<'a> {
     fn pick_char(&self) -> Option<char> {
         self.code
             .as_ref()
-            .and_then(|code| code.chars().nth(self.endindex))
+            .and_then(|code: &String| code.chars().nth(self.endindex))
     }
 
     // Escaneia uma cadeia de caracteres delimitada por aspas duplas no código fonte
@@ -401,27 +402,59 @@ impl<'a> Lexer<'a> {
     }
 
     // Escaneia um número no código fonte
-    fn scan_number(&mut self) {
-        // Loop para escanear os dígitos do número
+    fn scan_number(&mut self, firstchar: char) {
+        let mut num_str: String = String::new();
+        num_str.push(firstchar);
+        let mut has_dot: bool = false;
+        let mut has_exponent: bool = false;
+        // o pick_char é o at do lexer.
+        // Escaneia inteiros, decimais, hexadecimais, octais e binários
         while let Some(char) = self.pick_char() {
-            if !char.is_digit(10) {
-                break;
-            }
-            self.eat_char();
-        }
-        // Verifica se há um ponto decimal após os dígitos (para números decimais)
-        if self.pick_char() == Some('.') {
-            self.eat_char();
-            // Loop para escanear os dígitos após o ponto decimal
-            while let Some(char) = self.pick_char() {
-                if !char.is_digit(10) {
+            match char {
+                '0'..='9' => {
+                    num_str.push(self.eat_char());
+                }
+                '.' => {
+                    if has_dot || has_exponent {
+                        break;
+                    }
+                    has_dot = true;
+                    num_str.push(self.eat_char());
+                }
+                'e' | 'E' => {
+                    if has_exponent {
+                        break;
+                    }
+                    has_exponent = true;
+                    num_str.push(self.eat_char());
+                    if let Some(next_char) = self.pick_char() {
+                        if next_char == '+' || next_char == '-' {
+                            num_str.push(self.eat_char());
+                        }
+                    }
+                }
+                'x' | 'X' | 'o' | 'O' | 'b' | 'B' => {
+                    let mut has_prefix: bool = true;
+                    num_str.push(self.eat_char());
+                    while let Some(next_char) = self.pick_char() {
+                        match next_char {
+                            '0'..='9' | 'a'..='f' | 'A'..='F' => {
+                                num_str.push(self.eat_char());
+                                has_prefix = false;
+                            }
+                            _ => break,
+                        }
+                    }
+                    if has_prefix {
+                        // Se nenhum dígito foi encontrado após o prefixo, é um erro
+                        self.error(format!("Invalid number format: {}", num_str));
+                    }
                     break;
                 }
-                self.eat_char();
+                _ => break,
             }
         }
-        // Obtém a representação em string do número e adiciona um token correspondente à lista de tokens
-        let num_str = self.get_current_chunk(None, None);
+        // Adiciona o token do número identificado
         self.add_token(TokenType::Number, num_str);
     }
 

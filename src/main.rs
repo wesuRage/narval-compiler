@@ -20,5 +20,6 @@ fn main() {
     let tokens: Vec<Token> = lexer.tokenize(&source_code);
     let _ast: Program = parser.produce_ast(tokens.clone(), &source_code);
 
+    // println!("{:#?}", tokens);
     println!("{:#?}", _ast);
 }
