@@ -1,0 +1,58 @@
+auto Text :: label:lenof:(auto Text :: string) => {
+  asm:([
+    "contar_caracteres:",
+    "\tcmp byte [esi], 0", // verifica se o caractere atual é nulo
+    "\tje fim_contagem", // se for nulo, pula para o fim da contagem
+    "\tinc esi", // incrementa 1 em esi, ou seja, move para o próximo caractere,
+    "\tjmp contar_caracteres", // repete o loop
+
+    "fim_contagem:",
+    "\tsub esi, {{string}}", // calcula o comprimento da string (ESI - endereço inicial)
+    "\tret"
+    // Agora, ESI contém o comprimento da string
+  ]) 
+}
+
+auto _ :: label:print:(auto _ :: string) => {
+  asm:([
+    "mov esi, {{string}}", // carrega o endereço da string em ESI
+    "call lenof", // chama a função lenof
+    
+    "mov eax, 4", // syscall de sys_write
+    "mov ebx, 1", // std_out
+    "mov ecx, {{string}}", // carrega a string para printar
+    "mov edx, esi", // ESI contém o tamanho da string
+    "int 0x80" // chama o kernel e executa o código.
+  ])
+}
+
+auto _ :: label:println:(auto _ :: args) => {
+  asm:([
+    "mov esi, {{string}}", // carrega o endereço da string em ESI
+    "call lenof", // chama a função lenof
+    
+    "mov eax, 4", // syscall de sys_write
+    "mov ebx, 1", // std_out
+    "mov ecx, {{string}}", // carrega a string para printar
+    "mov edx, esi", // ESI contém o tamanho da string
+    "int 0x80", // chama o kernel e executa o código.
+
+    "mov eax, 4", // syscall de sys_write
+    "mov ebx, 1", // std_out
+    "mov ecx, BUILTIN_CONST_NEWLINE", // caractere de nova linha
+    "mov edx, 1", // tamanho do caractere de nova linha
+    "int 0x80" // chama o kernel e executa o código.
+  ])
+}
+
+auto Text :: label:input:(byte _ :: args) => {
+
+}
+
+byte Object<_> :: io << {
+  print: print,
+  println: println,
+  input: input
+};
+
+export:(io);

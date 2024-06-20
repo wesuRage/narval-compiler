@@ -1,11 +1,2 @@
-0
-2.
-.2
-1.0
-3.14
-3e10
-3e+10
-3e-10
-0xff
-0o017
-0B01101110
+byte Array<Array<Text>> :: meuArray << [["negao"],["da"],["bilada"]];
+meuArray[0];

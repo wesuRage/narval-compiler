@@ -39,7 +39,9 @@ pub enum TokenType {
     Exclamation,
     QuestionMark,
     And,
+    Asm,
     // Tokens para tipos de dados e palavras-chave
+    Array,
     Bool,
     Integer,
     Decimal,
@@ -147,6 +149,7 @@ impl TokenDefinitions {
         // Tipos de dados e palavras-chave
         keywords.insert("unit", TokenType::Unit);
         keywords.insert("as", TokenType::As);
+        keywords.insert("asm", TokenType::Asm);
         keywords.insert("private", TokenType::Private);
         keywords.insert("public", TokenType::Public);
         keywords.insert("undefined", TokenType::Undefined);
@@ -167,6 +170,7 @@ impl TokenDefinitions {
         keywords.insert("Object", TokenType::Object);
         keywords.insert("auto", TokenType::Auto);
         keywords.insert("Text", TokenType::Text);
+        keywords.insert("Array", TokenType::Array);
         keywords.insert("resb", TokenType::Resb);
         keywords.insert("resw", TokenType::Resw);
         keywords.insert("resd", TokenType::Resd);

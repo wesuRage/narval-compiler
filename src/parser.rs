@@ -24,6 +24,9 @@ impl Expr {
             Expr::IfStmt(_) => NodeType::IfStmt, // Se for uma declaração de condicional 'if'
             Expr::TernaryExpr(_) => NodeType::TernaryExpr, // Se for uma expressão ternária
             Expr::BlockExpr(_) => NodeType::BlockExpr, // Se for uma expressão de bloco
+            Expr::AsmStmt(_) => NodeType::AsmStmt, // Se for uma expressão de assembly
+            Expr::ArrayExpr(_) => NodeType::ArrayExpr,
+            Expr::ArrayAccess(_) => NodeType::ArrayAccess, // Se for um array
         }
     }
 }
@@ -66,102 +69,55 @@ impl Parser {
 
     // Método para analisar o tipo de dado
     fn parse_data_type(&mut self) -> String {
+        let mut data_type = String::new();
+
         // Match para determinar o tipo de token atual
         match self.at().token_type {
             // Se o token atual for Text, Integer, Decimal ou Bool
             TokenType::Text | TokenType::Integer | TokenType::Decimal | TokenType::Bool => {
-                self.eat().value.clone() // Consome o token e retorna o valor do token
+                data_type.push_str(&self.eat().value); // Consome o token e adiciona seu valor à string
             }
-            // Se o token atual for um Object
-            TokenType::Object => {
-                let mut data_type: String = String::new(); // Inicializa uma string para armazenar o tipo de dado
+            // Se o token atual for um Array
+            TokenType::Array | TokenType::Object => {
                 data_type.push_str(&self.eat().value); // Consome o token e adiciona seu valor à string
                 self.expect(TokenType::LessThan, "\"<\" Expected."); // Verifica se o próximo token é "<"
 
-                // Loop para processar os tipos de dados dentro do Object
-                while self.at().token_type != TokenType::GreaterThan {
-                    data_type.push_str(
-                        // Adiciona o valor do token à string do tipo de dado
-                        &self
-                            .expect_any(
-                                // Consome um dos tokens esperados dentro do Object
-                                &[
-                                    TokenType::UndefinedType,
-                                    TokenType::Text,
-                                    TokenType::Integer,
-                                    TokenType::Decimal,
-                                    TokenType::Bool,
-                                    TokenType::Object,
-                                ],
-                                "Inner type Expected.",
-                            )
-                            .value,
-                    );
+                // Parsear o tipo interno recursivamente
+                data_type.push('<');
+                data_type.push_str(&self.parse_data_type());
 
-                    // Se o próximo token for um Pipe ("|"), adiciona-o à string do tipo de dado e consome-o
-                    if self.at().token_type == TokenType::Pipe {
-                        data_type.push('|');
-                        self.eat();
-                    } else {
-                        break; // Sai do loop se não houver mais Pipes
-                    }
+                while self.at().token_type == TokenType::Comma {
+                    data_type.push(',');
+                    self.eat();
+                    data_type.push_str(&self.parse_data_type());
                 }
+
                 self.expect(TokenType::GreaterThan, "\">\" Expected."); // Verifica se o próximo token é ">"
-                data_type // Retorna a string com o tipo de dado completo
+                data_type.push('>');
             }
             // Se o token atual for "<", indicando um tipo de dado composto
             TokenType::LessThan => {
-                let mut data_type: String = String::new(); // Inicializa uma string para armazenar o tipo de dado
                 self.eat(); // Consome o token "<"
+                data_type.push('<');
+                data_type.push_str(&self.parse_data_type());
 
-                // Loop para processar os tipos de dados dentro do tipo de dado composto
-                while self.at().token_type != TokenType::GreaterThan {
-                    data_type.push_str(
-                        // Adiciona o valor do token à string do tipo de dado
-                        &self
-                            .expect_any(
-                                // Consome um dos tokens esperados dentro do tipo de dado composto
-                                &[
-                                    TokenType::Text,
-                                    TokenType::Integer,
-                                    TokenType::Decimal,
-                                    TokenType::Bool,
-                                ],
-                                "Inner type Expected.",
-                            )
-                            .value,
-                    );
-
-                    // Se o próximo token for um Pipe ("|"), adiciona-o à string do tipo de dado e consome-o
-                    if self.at().token_type == TokenType::Pipe {
-                        data_type.push('|');
-                        self.eat();
-                    } else {
-                        break; // Sai do loop se não houver mais Pipes
-                    }
+                while self.at().token_type == TokenType::Comma {
+                    data_type.push(',');
+                    self.eat();
+                    data_type.push_str(&self.parse_data_type());
                 }
 
                 self.expect(TokenType::GreaterThan, "\">\" Expected."); // Verifica se o próximo token é ">"
-                data_type // Retorna a string com o tipo de dado composto completo
+                data_type.push('>');
             }
             // Se o token atual não corresponder a nenhum tipo esperado
             _ => {
-                self.error("Expected one of: Text, Integer, Decimal, Bool, Object<T>"); // Gera um erro indicando o tipo esperado
-                "Invalid".to_string() // Retorna um tipo de dado padrão inválido
+                self.error("Expected one of: Text, Integer, Decimal, Bool, Object<T>, Array<T>");
+                // Gera um erro indicando o tipo esperado
             }
         }
-    }
 
-    // Método para esperar por qualquer tipo de token entre os tipos esperados
-    fn expect_any(&mut self, expected_types: &[TokenType], err: &str) -> Token {
-        let prev = self.eat(); // Consome o token anterior
-
-        // Verifica se o tipo do token anterior corresponde a algum dos tipos esperados
-        if !prev.token_type.matches(expected_types) {
-            self.error(err); // Gera um erro se o tipo do token não estiver entre os tipos esperados
-        }
-
-        prev // Retorna o token anterior
+        data_type // Retorna a string com o tipo de dado completo
     }
 
     // Método para esperar um tipo específico de token
@@ -247,6 +203,8 @@ impl Parser {
             TokenType::Export => self.parse_export_stmt(),
             // Se o token atual for um If, analisa uma declaração de condicional If
             TokenType::If => self.parse_if_stmt(),
+            // Se o token atual for um asm, analisa um statement de código assembly arbitrário
+            TokenType::Asm => self.parse_asm_stmt(),
             // Se o token atual for Auto, Resb, Resw, Resd, ou Resq, analisa uma declaração de variável ou função
             TokenType::Auto
             | TokenType::Resb
@@ -310,12 +268,15 @@ impl Parser {
             // Se o token atual for Identifier, String, ou Number, analisa uma expressão ou chamada de função
             TokenType::Identifier | TokenType::String | TokenType::Number => {
                 // Verifica se o próximo token não é um dos tokens que indicam o final da expressão
-                if let Some(next_token) = self.tokens.get(1) {
+                if let Some(next_token) = self.tokens.get(self.index + 1) {
+                    println!("{:?}", self.at().value);
+                    println!("{:?}", next_token.value);
                     if next_token.token_type != TokenType::Semicolon
                         && next_token.token_type != TokenType::Attribution
                         && next_token.token_type != TokenType::Dot
                         && next_token.token_type != TokenType::OParen
                         && next_token.token_type != TokenType::Colon
+                        && next_token.token_type != TokenType::OBracket
                     {
                         let ident: String = self.eat().value; // Obtém o identificador
                         let return_expr: ReturnStmt = ReturnStmt {
@@ -331,34 +292,26 @@ impl Parser {
                             return_stmt: Some(return_expr),
                         }
                     } else {
-                        let expr: Expr = self.parse_expr(); // Analisa a expressão
-                                                            // Verifica se a expressão é uma chamada de função
-                        if let Some(next_token) = self.tokens.get(1) {
+                        let mut expr: Expr = self.parse_expr(); // Analisa a expressão
+                                                                // Loop para permitir chaining de acessos a array
+                        while let Some(next_token) = self.tokens.get(self.index) {
                             if next_token.token_type == TokenType::OParen {
                                 let args: Vec<Box<Expr>> = self.parse_arguments(); // Analisa os argumentos da chamada de função
-                                let call_expr: Expr = Expr::CallExpr(CallExpr {
+                                expr = Expr::CallExpr(CallExpr {
                                     kind: NodeType::CallExpr,
                                     caller: Box::new(expr),
                                     args,
                                 });
-                                Stmt {
-                                    kind: call_expr.kind(),
-                                    expr: Some(call_expr),
-                                    return_stmt: None,
-                                }
+                            } else if next_token.token_type == TokenType::OBracket {
+                                expr = self.parse_array_access_expr(expr); // Analisa a expressão de acesso a índice de array
                             } else {
-                                Stmt {
-                                    kind: expr.kind(),
-                                    expr: Some(expr),
-                                    return_stmt: None,
-                                }
+                                break;
                             }
-                        } else {
-                            Stmt {
-                                kind: expr.kind(),
-                                expr: Some(expr),
-                                return_stmt: None,
-                            }
+                        }
+                        Stmt {
+                            kind: expr.kind(),
+                            expr: Some(expr),
+                            return_stmt: None,
                         }
                     }
                 } else {
@@ -378,6 +331,56 @@ impl Parser {
                     return_stmt: None,
                 }
             }
+        }
+    }
+
+    // Método para analisar uma expressão de acesso a índice de array
+    fn parse_array_access_expr(&mut self, array_expr: Expr) -> Expr {
+        let mut expr = array_expr;
+        while self.at().token_type == TokenType::OBracket {
+            self.eat(); // Consome o '['
+            let index_expr = self.parse_expr(); // Analisa a expressão de índice
+            self.expect(TokenType::CBracket, "\"]\" Expected."); // Espera um ']'
+            expr = Expr::ArrayAccess(ArrayAccess {
+                kind: NodeType::ArrayAccess,
+                array: Box::new(expr),
+                index: Box::new(index_expr),
+            });
+        }
+        expr
+    }
+
+    // Método para injeção de código assembly arbitrário
+    fn parse_asm_stmt(&mut self) -> Stmt {
+        let mut asm_code: Vec<Expr> = Vec::new();
+
+        self.eat();
+        self.expect(TokenType::Colon, "\":\" Expected.");
+        self.expect(TokenType::OParen, "\"(\" Expected.");
+
+        while self.at().token_type != TokenType::CParen {
+            self.expect(TokenType::OBracket, "\"[\" Expected.");
+
+            while self.at().token_type != TokenType::CBracket {
+                asm_code.push(self.parse_expr());
+
+                if self.at().token_type == TokenType::Comma {
+                    self.eat();
+                }
+            }
+            self.expect(TokenType::CBracket, "\"]\" Expected.");
+        }
+
+        self.expect(TokenType::CParen, "\")\" Expected.");
+        self.expect(TokenType::Semicolon, "\";\" Expected.");
+
+        Stmt {
+            kind: NodeType::AsmStmt,
+            expr: Some(Expr::AsmStmt(AsmStmt {
+                kind: NodeType::AsmStmt,
+                code: asm_code,
+            })),
+            return_stmt: None,
         }
     }
 
@@ -720,7 +723,7 @@ impl Parser {
 
             // Verifica se a inicialização é um objeto ou uma expressão
             let value: Box<Expr> = if self.at().token_type == TokenType::OBrace {
-                Box::new(self.parse_object_expr()) // Parseia como objeto
+                Box::new(self.parse_array_expr()) // Parseia como objeto
             } else {
                 self.parse_ternary_expr() // Parseia como expressão
             };
@@ -788,7 +791,10 @@ impl Parser {
             }
             self.expect(TokenType::CBrace, "\"}\" Expected."); // Verifica e consome o token "}"
                                                                // Retorna uma expressão representando um bloco de instruções
-            Box::new(Expr::BlockExpr(Box::new(BlockExpr { statements })))
+            Box::new(Expr::BlockExpr(Box::new(BlockExpr {
+                kind: NodeType::BlockExpr,
+                statements,
+            })))
         } else {
             Box::new(self.parse_expr()) // Retorna a expressão analisada
         }
@@ -801,7 +807,7 @@ impl Parser {
 
     // Método para analisar uma expressão de atribuição
     fn parse_assignment_expr(&mut self) -> Expr {
-        let mut left: Expr = self.parse_object_expr(); // Analisa a expressão do lado esquerdo da atribuição
+        let mut left: Expr = self.parse_array_expr(); // Analisa a expressão do lado esquerdo da atribuição
 
         // Loop para lidar com múltiplas atribuições consecutivas
         while self.at().token_type == TokenType::Attribution {
@@ -816,6 +822,39 @@ impl Parser {
         }
 
         left // Retorna a expressão analisada
+    }
+
+    // Método para analisar uma expressão de array
+    fn parse_array_expr(&mut self) -> Expr {
+        // Verifica se o token é "[", se não for, ele passa para outro parsing
+        if self.at().token_type != TokenType::OBracket {
+            return self.parse_object_expr();
+        }
+
+        // Cria uma variável para armazenar um array
+        let mut array: Vec<Expr> = Vec::new();
+        // Consome o token de colchetes
+        self.eat();
+
+        // Enquanto o token atual for diferente de "]"
+        while self.at().token_type != TokenType::CBracket {
+            // Coloca na variável de arrays uma expressão
+            array.push(self.parse_expr());
+
+            // Se houver vígula, consome ela
+            if self.at().token_type == TokenType::Comma {
+                self.eat();
+            }
+        }
+
+        // Espera que haja o fechamento de colchetes
+        self.expect(TokenType::CBracket, "\"]\" Expected.");
+
+        //
+        Expr::ArrayExpr(ArrayExpr {
+            kind: NodeType::ArrayExpr,
+            elements: array,
+        })
     }
 
     // Método para analisar uma expressão de objeto
@@ -1044,7 +1083,10 @@ impl Parser {
                 expr // Retorna a expressão analisada
             }
 
+            // Se conter "{", faz o parsing de objetos
             TokenType::OBrace => self.parse_object_expr(),
+            // Se conter "[", faz o parsing de arrays
+            TokenType::OBracket => self.parse_array_expr(),
 
             _ => {
                 // Se for qualquer outro tipo de token

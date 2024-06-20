@@ -6,6 +6,9 @@ pub enum NodeType {
     ExportStmt,
     IfStmt,
     ReturnStmt,
+    AsmStmt,
+    ArrayExpr,
+    ArrayAccess,
 
     Identifier,
     NullLiteral,
@@ -30,6 +33,9 @@ pub enum Expr {
     ImportStmt(ImportStmt),
     ExportStmt(ExportStmt),
     IfStmt(Box<IfStmt>),
+    AsmStmt(AsmStmt),
+    ArrayExpr(ArrayExpr),
+    ArrayAccess(ArrayAccess),
 
     Identifier(Identifier),
     NullLiteral(NullLiteral),
@@ -183,5 +189,25 @@ pub struct TernaryExpr {
 
 #[derive(Debug, Clone)]
 pub struct BlockExpr {
+    pub kind: NodeType,
     pub statements: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AsmStmt {
+    pub kind: NodeType,
+    pub code: Vec<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ArrayExpr {
+    pub kind: NodeType,
+    pub elements: Vec<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ArrayAccess {
+    pub kind: NodeType,
+    pub array: Box<Expr>,
+    pub index: Box<Expr>,
 }
