@@ -599,20 +599,23 @@ impl Parser {
         }
     }
 
-    // Método para analisar uma instrução de retorno
+    // Método para analisar uma declaração de retorno
     fn parse_return_stmt(&mut self) -> ReturnStmt {
-        self.eat(); // Consome o token "return"
-        let argument: Option<Expr> = if self.at().token_type != TokenType::Semicolon {
-            Some(*Box::new(self.parse_expr())) // Se houver um argumento de retorno, analisa-o
-        } else {
-            None // Caso contrário, nenhum argumento é fornecido
-        };
-        self.expect(TokenType::Semicolon, "\";\" Expected"); // Verifica e consome o token ";"
+        self.expect(TokenType::Return, "\"return\" Expected."); // Consome a palavra-chave "return"
+        let mut expr: Expr = self.parse_expr(); // Analisa a expressão de retorno
 
-        // Retorna uma estrutura ReturnStmt representando a instrução de retorno
+        // Loop para permitir chaining de acessos a array
+        while let Some(next_token) = self.tokens.get(self.index) {
+            if next_token.token_type == TokenType::OBracket {
+                expr = self.parse_array_access_expr(expr); // Analisa a expressão de acesso a índice de array
+            } else {
+                break;
+            }
+        }
+
         ReturnStmt {
             kind: NodeType::ReturnStmt,
-            argument,
+            argument: Some(*Box::new(expr)), // Retorna a expressão analisada
         }
     }
 
