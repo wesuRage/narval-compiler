@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum NodeType {
     Program,
@@ -162,7 +164,7 @@ pub struct CallExpr {
 #[derive(Debug, Clone)]
 pub struct ImportStmt {
     pub kind: NodeType,
-    pub paths: Vec<String>,
+    pub paths: HashMap<String, Option<String>>,
 }
 
 #[derive(Debug, Clone)]

@@ -89,13 +89,6 @@ pub enum TokenType {
     _Invalid,
 }
 
-impl TokenType {
-    // Verifica se o tipo de token atual corresponde a um dos tipos fornecidos
-    pub fn matches(&self, candidates: &[TokenType]) -> bool {
-        candidates.contains(self)
-    }
-}
-
 // Estrutura que contém as definições de tokens
 pub struct TokenDefinitions {
     pub literals: HashMap<&'static str, TokenType>, // Mapeamento de literais para tipos de token
@@ -105,8 +98,8 @@ pub struct TokenDefinitions {
 impl TokenDefinitions {
     // Construtor da estrutura TokenDefinitions
     pub fn new() -> Self {
-        let mut literals = HashMap::new();
-        let mut keywords = HashMap::new();
+        let mut literals: HashMap<&str, TokenType> = HashMap::new();
+        let mut keywords: HashMap<&str, TokenType> = HashMap::new();
 
         // Preenchimento dos mapas com literais e palavras-chave associados aos tipos de token correspondentes
         // Delimitadores

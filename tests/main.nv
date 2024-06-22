@@ -1,2 +1,9 @@
-byte Array<Array<Text>> :: meuArray << [["negao"],["da"],["bilada"]];
-return "";
+auto _ :: label:tigrinho:(byte Integer :: negao, word Text :: nome) => {
+  return io.nome:();
+}
+
+byte Object<_> :: pessoa << tigrinho:(3, "oi");
+
+tigrinho:();
+
+export:([pessoa]);

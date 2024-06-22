@@ -1,10 +1,12 @@
 mod ast;
-mod checker;
+// mod checker;
 mod colors;
+mod datatype;
 mod lexer;
 mod parser;
+
 use ast::Program;
-use checker::Checker;
+// use checker::Checker;
 use lexer::{Lexer, Token};
 use parser::Parser;
 // use std::{env, fs};
@@ -23,7 +25,7 @@ fn main() {
     let ast: Program = parser.produce_ast(tokens.clone(), &source_code);
 
     // let mut checker: Checker = Checker::new(ast.clone());
-    // let checked = checker.check_tree();
+    // checker.check_tree();
 
     // println!("{:#?}", tokens);
     println!("{:#?}", ast);
