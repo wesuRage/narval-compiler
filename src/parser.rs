@@ -40,6 +40,9 @@ impl Expr {
             Expr::PostDecrementExpr(_) => NodeType::PostDecrementExpr, // Se for uma expressão como x--
             Expr::TrueLiteral(_) => NodeType::TrueLiteral,             // Se for true
             Expr::FalseLiteral(_) => NodeType::FalseLiteral,           // Se for false
+            Expr::UnitDeclaration(_) => NodeType::UnitDeclaration, // Se for uma declaração de unit
+            Expr::UnitVarDeclaration(_) => NodeType::UnitVarDeclaration, // Se for uma declaração de variável dentro de uma unit
+            Expr::UnitFunctionDeclaration(_) => NodeType::UnitFunctionDeclaration, // Se for uma declaração de função dentro de uma unit
         }
     }
 }
@@ -239,6 +242,10 @@ impl Parser {
             TokenType::Loop => self.parse_loop_stmt(),
             // Se o token atual for um for, analisa o for statement
             TokenType::For => self.parse_for_stmt(),
+            // Se o token atual for uma unit, analisa a unit
+            TokenType::Unit => self.parse_unit(),
+            // Se o token atual for private ou public, analisa um statement unit
+            TokenType::Private | TokenType::Public => self.parse_unit_statement_declaration(),
             // Se o token atual for Resb, Resw, Resd, ou Resq, analisa uma declaração de variável ou função
             TokenType::Resb | TokenType::Resw | TokenType::Resd | TokenType::Resq => {
                 let data_size: String = self.eat().value; // Obtém o tamanho dos dados
@@ -583,7 +590,7 @@ impl Parser {
         args // Retorna o vetor de argumentos
     }
 
-    // Método para analisar uma declaração "if"
+    // Método para analisar um if statement
     fn parse_if_stmt(&mut self) -> Stmt {
         self.eat(); // Consome o token "if"
         self.expect(TokenType::OParen, "\"(\" Expected."); // Verifica e consome o token "("
@@ -901,6 +908,217 @@ impl Parser {
             parameters,
             body,
         }))
+    }
+
+    fn parse_unit_statement_declaration(&mut self) -> Stmt {
+        let access_modifier: String = match self.at().token_type {
+            TokenType::Public | TokenType::Private => self.eat().value.clone(),
+            _ => "public".to_string(),
+        };
+
+        if self.tokens.get(self.index + 3).unwrap().token_type != TokenType::Label {
+            let constant: bool = matches!(
+                self.at().token_type,
+                TokenType::Auto
+                    | TokenType::Byte
+                    | TokenType::Word
+                    | TokenType::Dword
+                    | TokenType::Qword
+            );
+
+            let mut data_size: String = "".to_string();
+
+            if !constant {
+                self.eat();
+                let mut size: Option<String> = Some("1".to_string());
+                // Se houver colchetes, obtém o tamanho especificado
+                if self.at().token_type == TokenType::OBracket {
+                    size = Some(format!(
+                        "{}[{}]",
+                        data_size,
+                        self.expect(TokenType::Number, "Integer Expected.").value
+                    ));
+                    self.expect(TokenType::CBracket, "\"]\" Expected.");
+                }
+
+                data_size = size.unwrap();
+            } else {
+                data_size = self.eat().value;
+            }
+
+            let data_type: String = self.parse_data_type();
+
+            self.expect(TokenType::Separator, "\"::\" Expected.");
+
+            let identifier: String = self
+                .expect(TokenType::Identifier, "Identifier Expected.")
+                .value;
+
+            // Espera pelo token de atribuição "<<"
+            self.expect(TokenType::Attribution, "\"<<\" Expected.");
+
+            // Parseia a expressão de valor
+            let value: Box<Expr>;
+
+            match self.at().token_type {
+                TokenType::OBracket => {
+                    value = Box::new(self.parse_array_expr());
+                }
+
+                TokenType::OBrace => value = Box::new(self.parse_object_expr()),
+                _ => {
+                    value = Box::new(*self.parse_ternary_expr());
+                }
+            }
+
+            // Espera pelo ponto e vírgula ";"
+            self.expect(TokenType::Semicolon, "\";\" Expected");
+
+            return Stmt {
+                kind: NodeType::UnitVarDeclaration,
+                expr: Some(Expr::UnitVarDeclaration(Box::new(UnitVarDeclaration {
+                    kind: NodeType::UnitVarDeclaration,
+                    access_modifier,
+                    constant,
+                    data_size,
+                    data_type,
+                    identifier,
+                    value,
+                }))),
+                return_stmt: None,
+            };
+        }
+
+        let return_size: String = self.eat().value;
+
+        let return_type: String = self.parse_data_type();
+
+        self.expect(TokenType::Separator, "\"::\" Expected.");
+
+        self.eat(); // Consome o token "label"
+        self.expect(TokenType::Colon, "\":\" Expected."); // Verifica e consome o token ":"
+
+        let name: String = self
+            .expect(TokenType::Identifier, "Method name Expected.") // Analisa e armazena o nome do método
+            .value;
+
+        self.expect(TokenType::Colon, "\":\" Expected."); // Verifica e consome o token ":"
+
+        let mut parameters: Vec<(String, String, String)> = Vec::new(); // Inicializa um vetor para armazenar os parâmetros do método
+
+        // Verifica se há parênteses para delimitar os parâmetros
+        if self.at().token_type == TokenType::OParen {
+            self.eat(); // Consome o token "("
+
+            // Verifica se há parâmetros dentro dos parênteses
+            if self.at().token_type == TokenType::CParen {
+                self.error("Parameter(s) Expected inside parentheses."); // Emite um erro se não houver parâmetros
+                self.eat(); // Consome o token ")"
+            } else {
+                // Loop para analisar cada parâmetro
+                while self.at().token_type != TokenType::CParen {
+                    let size: String = self.eat().value.clone(); // Obtém o tamanho do parâmetro
+                    let data_type: String = self.parse_data_type(); // Analisa e obtém o tipo de dados do parâmetro
+                    self.expect(TokenType::Separator, "\"::\" Expected."); // Verifica e consome o token "::"
+                    let identifier = self
+                        .expect(TokenType::Identifier, "Parameter name expected") // Analisa e armazena o nome do parâmetro
+                        .value;
+
+                    parameters.push((size, data_type, identifier)); // Adiciona o parâmetro ao vetor de parâmetros
+
+                    if self.at().token_type == TokenType::Comma {
+                        self.eat(); // Consome a vírgula entre os parâmetros
+                    } else if self.at().token_type != TokenType::CParen {
+                        self.error("Expected ',' or ')' after parameter"); // Emite um erro se não houver uma vírgula ou parêntese após o parâmetro
+                        break;
+                    }
+                }
+                self.expect(TokenType::CParen, "\")\" Expected."); // Verifica e consome o token ")"
+            }
+        }
+
+        self.expect(TokenType::Arrow, "\"=>\" Expected."); // Verifica e consome o token "=>"
+        self.expect(TokenType::OBrace, "\"{\" Expected."); // Verifica e consome o token "{"
+
+        let mut body: Vec<Stmt> = Vec::new(); // Inicializa um vetor para armazenar o corpo do método
+
+        // Loop para analisar cada instrução no corpo do método
+        while self.at().token_type != TokenType::Eof && self.at().token_type != TokenType::CBrace {
+            body.push(self.parse_stmt()); // Analisa e adiciona a instrução ao vetor de corpo
+        }
+
+        self.expect(TokenType::CBrace, "\"}\" Expected."); // Verifica e consome o token "}"
+
+        // Retorna um statement com a Expr representando a declaração do método
+
+        Stmt {
+            kind: NodeType::UnitFunctionDeclaration,
+            expr: Some(Expr::UnitFunctionDeclaration(Box::new(
+                UnitFunctionDeclaration {
+                    kind: NodeType::UnitFunctionDeclaration,
+                    access_modifier,
+                    return_size,
+                    return_type,
+                    name,
+                    parameters,
+                    body,
+                },
+            ))),
+            return_stmt: None,
+        }
+    }
+
+    // Método para analisar uma unidade (unit)
+    fn parse_unit(&mut self) -> Stmt {
+        self.eat(); // Consome o token "unit"
+
+        self.expect(TokenType::Colon, "\":\" Expected.");
+
+        let name: String = self
+            .expect(TokenType::Identifier, "Identifier Expected.")
+            .value
+            .clone();
+
+        self.expect(TokenType::Colon, "\":\" Expected.");
+
+        let mut super_units: Option<Vec<String>> = Some(Vec::new());
+
+        if self.at().token_type == TokenType::OParen {
+            self.eat(); // Consome o token "("
+            while self.at().token_type == TokenType::Identifier {
+                if let Some(units) = super_units.as_mut() {
+                    units.push(self.eat().value.clone());
+                }
+
+                if self.at().token_type == TokenType::Comma {
+                    self.eat(); // Consome o token ","
+                }
+            }
+            self.expect(TokenType::CParen, "\")\" Expected.");
+        }
+
+        self.expect(TokenType::Arrow, "\"=>\" Expected.");
+        self.expect(TokenType::OBrace, "\"{\" Expected.");
+
+        let mut body: Vec<Stmt> = Vec::new();
+        while self.not_eof() && self.at().token_type != TokenType::CBrace {
+            body.push(self.parse_stmt());
+        }
+
+        self.expect(TokenType::CBrace, "\"}\" Expected.");
+
+        let expr: Option<Expr> = Some(Expr::UnitDeclaration(Box::new(UnitDeclaration {
+            kind: NodeType::UnitDeclaration,
+            name,
+            super_units,
+            body,
+        })));
+
+        Stmt {
+            kind: NodeType::UnitDeclaration,
+            expr,
+            return_stmt: None,
+        }
     }
 
     // Método para analisar uma declaração de variável

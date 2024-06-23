@@ -1,3 +1,51 @@
-if (!true) {
-  return (magenta > 3 || tigrao == (olho == "pexe" ? 3 :: 5));
+unit:io: => {
+  private byte Integer :: BUILTIN_CONST_NEWLINE << 0xA; // Caractere de nova linha
+
+  public auto _ :: label:lenof:(auto Text :: string) => {
+    asm:([
+      "contar_caracteres:",
+      "\tcmp byte [esi], 0", // verifica se o caractere atual e nulo
+      "\tje fim_contagem", // se for nulo, pula para o fim da contagem
+      "\tinc esi", // incrementa 1 em esi, ou seja, move para o proximo caractere,
+      "\tjmp contar_caracteres", // repete o loop
+
+      "fim_contagem:",
+      "\tsub esi, {{string}}", // calcula o comprimento da string (ESI - endereco inicial)
+      "\tret", // ESI agora contem o tamanho da string
+    ]);
+  }
+
+  public auto _ :: label:print:(auto _ :: string) => {
+    asm:([
+      "\tmov esi, {{string}}", // carrega o endereco da string em ESI
+      "\tcall lenof", // chama a funcao lenof
+      
+      "\tmov eax, 4", // syscall de sys_write
+      "\tmov ebx, 1", // std_out
+      "\tmov ecx, {{string}}", // carrega a string para printar
+      "\tmov edx, esi", // ESI contem o tamanho da string
+      "\tint 0x80", // chama o kernel e executa o codigo.
+    ]);
+  }
+
+  public auto _ :: label:println:(auto _ :: string) => {
+    asm:([
+      "\tmov esi, {{string}}", // carrega o endereco da string em ESI
+      "\tcall lenof", // chama a funcao lenof
+      
+      "\tmov eax, 4", // syscall de sys_write
+      "\tmov ebx, 1", // std_out
+      "\tmov ecx, {{string}}", // carrega a string para printar
+      "\tmov edx, esi", // ESI contem o tamanho da string
+      "\tint 0x80", // chama o kernel e executa o codigo.
+
+      "\tmov eax, 4", // syscall de sys_write
+      "\tmov ebx, 1", // std_out
+      "\tmov ecx, BUILTIN_CONST_NEWLINE", // caractere de nova linha
+      "\tmov edx, 1", // tamanho do caractere de nova linha
+      "\tint 0x80" // chama o kernel e executa o codigo.
+    ]);
+  }
 }
+
+export:([io]);

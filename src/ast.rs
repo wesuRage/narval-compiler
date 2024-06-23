@@ -24,6 +24,9 @@ pub enum NodeType {
 
     VarDeclaration,
     FunctionDeclaration,
+    UnitDeclaration,
+    UnitVarDeclaration,
+    UnitFunctionDeclaration,
 
     AssignmentExpr,
     BinaryExpr,
@@ -62,6 +65,9 @@ pub enum Expr {
 
     VarDeclaration(VarDeclaration),
     FunctionDeclaration(Box<FunctionDeclaration>),
+    UnitDeclaration(Box<UnitDeclaration>),
+    UnitVarDeclaration(Box<UnitVarDeclaration>),
+    UnitFunctionDeclaration(Box<UnitFunctionDeclaration>),
 
     AssignmentExpr(AssignmentExpr),
     BinaryExpr(BinaryExpr),
@@ -84,6 +90,36 @@ pub enum Expr {
 pub struct Program {
     pub kind: NodeType,
     pub body: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UnitDeclaration {
+    pub kind: NodeType,
+    pub name: String,
+    pub super_units: Option<Vec<String>>,
+    pub body: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UnitFunctionDeclaration {
+    pub kind: NodeType,
+    pub access_modifier: String,
+    pub return_size: String,
+    pub return_type: String,
+    pub name: String,
+    pub parameters: Vec<(String, String, String)>,
+    pub body: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UnitVarDeclaration {
+    pub kind: NodeType,
+    pub access_modifier: String,
+    pub constant: bool,
+    pub data_size: String,
+    pub data_type: String,
+    pub identifier: String,
+    pub value: Box<Expr>,
 }
 
 #[derive(Debug, Clone)]
