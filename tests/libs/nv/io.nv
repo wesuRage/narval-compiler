@@ -1,5 +1,3 @@
-
-
 unit:io:{
   private byte Integer :: BUILTIN_CONST_NEWLINE << 0xA; // Caractere de nova linha
 
@@ -12,7 +10,7 @@ unit:io:{
       "\tjmp contar_caracteres", // repete o loop
 
       "fim_contagem:",
-      "\tsub esi, {{string}}", // calcula o comprimento da string (ESI - endereço inicial)
+      "\tsub esi, {{string:() == 3? }}", // calcula o comprimento da string (ESI - endereço inicial)
       "\tret"
       // Agora, ESI contém o comprimento da string
     ]) 

@@ -40,6 +40,8 @@ pub enum TokenType {
     QuestionMark,
     And,
     Asm,
+    Increment,
+    Decrement,
     // Tokens para tipos de dados e palavras-chave
     Array,
     Bool,
@@ -80,6 +82,8 @@ pub enum TokenType {
     True,
     False,
     Continue,
+    Loop,
+    For,
     // Tokens para modificadores de acesso
     Private,
     Public,
@@ -139,7 +143,11 @@ impl TokenDefinitions {
         literals.insert("::", TokenType::Separator);
         literals.insert("<<", TokenType::Attribution);
         literals.insert("=>", TokenType::Arrow);
+        literals.insert("++", TokenType::Increment);
+        literals.insert("--", TokenType::Decrement);
         // Tipos de dados e palavras-chave
+        keywords.insert("loop", TokenType::Loop);
+        keywords.insert("for", TokenType::For);
         keywords.insert("unit", TokenType::Unit);
         keywords.insert("as", TokenType::As);
         keywords.insert("asm", TokenType::Asm);

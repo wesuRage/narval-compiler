@@ -1,9 +1,3 @@
-auto _ :: label:tigrinho:(byte Integer :: negao, word Text :: nome) => {
-  return io.nome:();
+if (!true) {
+  return (magenta > 3 || tigrao == (olho == "pexe" ? 3 :: 5));
 }
-
-byte Object<_> :: pessoa << tigrinho:(3, "oi");
-
-tigrinho:();
-
-export:([pessoa]);

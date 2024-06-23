@@ -28,6 +28,18 @@ impl Expr {
             Expr::AsmStmt(_) => NodeType::AsmStmt, // Se for uma expressão de assembly
             Expr::ArrayExpr(_) => NodeType::ArrayExpr, // Se for um array
             Expr::ArrayAccess(_) => NodeType::ArrayAccess, // Se for um array access
+            Expr::UndefinedLiteral(_) => NodeType::UndefinedLiteral, // Se for undefined
+            Expr::BreakExpr(_) => NodeType::BreakExpr, // Se for um break
+            Expr::LoopStmt(_) => NodeType::LoopStmt, // Se for um loop statement
+            Expr::ForStmt(_) => NodeType::ForStmt, // Se for um for statement
+            Expr::LogicalNotExpr(_) => NodeType::LogicalNotExpr, // Se for uma expressão como !x
+            Expr::UnaryMinusExpr(_) => NodeType::UnaryMinusExpr, // Se for uma expressão como -x
+            Expr::PreIncrementExpr(_) => NodeType::PreIncrementExpr, // Se for uma expressão como ++x
+            Expr::PostIncrementExpr(_) => NodeType::PostIncrementExpr, // Se for uma expressão como x++
+            Expr::PreDecrementExpr(_) => NodeType::PreDecrementExpr, // Se for uma expressão como --x
+            Expr::PostDecrementExpr(_) => NodeType::PostDecrementExpr, // Se for uma expressão como x--
+            Expr::TrueLiteral(_) => NodeType::TrueLiteral,             // Se for true
+            Expr::FalseLiteral(_) => NodeType::FalseLiteral,           // Se for false
         }
     }
 }
@@ -72,6 +84,10 @@ impl Parser {
 
     // Método para retornar o próximo token sem consumi-lo
     fn next(&self) -> &Token {
+        if self.tokens.get(self.index + 1).is_none() {
+            return self.at();
+        }
+
         self.tokens.get(self.index + 1).unwrap()
     }
 
@@ -219,6 +235,10 @@ impl Parser {
             TokenType::If => self.parse_if_stmt(),
             // Se o token atual for um asm, analisa um statement de código assembly arbitrário
             TokenType::Asm => self.parse_asm_stmt(),
+            // Se o token atual for um loop, analisa o loop statement
+            TokenType::Loop => self.parse_loop_stmt(),
+            // Se o token atual for um for, analisa o for statement
+            TokenType::For => self.parse_for_stmt(),
             // Se o token atual for Resb, Resw, Resd, ou Resq, analisa uma declaração de variável ou função
             TokenType::Resb | TokenType::Resw | TokenType::Resd | TokenType::Resq => {
                 let data_size: String = self.eat().value; // Obtém o tamanho dos dados
@@ -346,8 +366,9 @@ impl Parser {
                                 });
                             }
                             TokenType::OBracket => {
-                                expr = self.parse_array_access_expr(expr); // Analisa a expressão de acesso a índice de array
+                                expr = self.parse_array_access_expr(); // Analisa a expressão de acesso a índice de array
                             }
+                            TokenType::Increment => {}
                             TokenType::Semicolon => {
                                 self.error("\";\" Unexpected.");
                                 self.eat();
@@ -376,33 +397,136 @@ impl Parser {
         }
     }
 
-    // Método para analisar uma expressão de acesso a arrays
-    fn parse_array_access_expr(&mut self, object: Expr) -> Expr {
-        self.expect(TokenType::OBracket, "\"[\" Expected."); // Espera o token '['
+    fn parse_for_stmt(&mut self) -> Stmt {
+        self.eat(); // consome o token de for
 
-        let index = Box::new(self.parse_expr()); // Analisa a expressão do índice do array
+        // Espera o token de "(" para o início dos itens
+        self.expect(TokenType::OParen, "\"(\" Expected.");
+        let mut items: Vec<String> = Vec::new();
 
-        self.expect(TokenType::CBracket, "\"]\" Expected."); // Espera o token ']'
+        // Enquanto não for end of file ou "}", faz o parsing de statements
+        while self.at().token_type != TokenType::Eof && self.at().token_type != TokenType::CParen {
+            items.push(
+                self.expect(TokenType::Identifier, "Identifier Expected.")
+                    .value,
+            ); // adiciona um item aos itens
 
-        let mut expr = Expr::ArrayAccess(ArrayAccess {
-            kind: NodeType::ArrayAccess,
-            array: Box::new(object),
-            index,
-        });
-
-        // Loop para lidar com múltiplos acessos a arrays e outros membros ou chamadas
-        while self.at().token_type == TokenType::OBracket {
-            self.eat(); // Consome o token '['
-            let index = Box::new(self.parse_expr()); // Analisa a expressão do índice do array
-            self.expect(TokenType::CBracket, "\"]\" Expected."); // Espera o token ']'
-            expr = Expr::ArrayAccess(ArrayAccess {
-                kind: NodeType::ArrayAccess,
-                array: Box::new(expr),
-                index,
-            });
+            // Se houver uma vírgula, consome-a
+            if self.at().token_type == TokenType::Comma {
+                self.eat();
+            }
         }
 
-        expr
+        // Espera o token de ")" para o fim dos itens
+        self.expect(TokenType::CParen, "\")\" Expected.");
+        self.expect(TokenType::Colon, "\":\" Expected.");
+
+        // Espera o token de "(" para o início da sequência
+        self.expect(TokenType::OParen, "\"(\" Expected.");
+        let mut sequence: Vec<Expr> = Vec::new();
+
+        // Enquanto não for end of file ou "}", faz o parsing de statements
+        while self.at().token_type != TokenType::Eof && self.at().token_type != TokenType::CParen {
+            sequence.push(self.parse_array_access_expr());
+
+            // Se houver uma vírgula, consome-a
+            if self.at().token_type == TokenType::Comma {
+                self.eat();
+            }
+        }
+
+        // Espera o token de "(" para o fim dos itens
+        self.expect(TokenType::CParen, "\")\" Expected.");
+
+        // Espera o token de Arrow para o começo do corpo do for loop
+        self.expect(TokenType::Arrow, "\"=>\" Expected.");
+
+        self.expect(TokenType::OBrace, "\"{\" Expected.");
+        let mut body: Vec<Stmt> = Vec::new();
+
+        // Enquanto não for end of file ou "}", faz o parsing de statements
+        while self.at().token_type != TokenType::Eof && self.at().token_type != TokenType::CBrace {
+            body.push(self.parse_stmt());
+        }
+
+        self.expect(TokenType::CBrace, "\"}\" Expected.");
+
+        Stmt {
+            kind: NodeType::ForStmt,
+            expr: Some(Expr::ForStmt(ForStmt {
+                kind: NodeType::ForStmt,
+                items,
+                sequence,
+                body,
+            })),
+            return_stmt: None,
+        }
+    }
+
+    fn parse_loop_stmt(&mut self) -> Stmt {
+        self.eat(); // consome o token de loop
+        self.expect(TokenType::OBrace, "\"{\" Expected.");
+
+        let mut body: Vec<Stmt> = Vec::new();
+
+        // Enquanto não for end of file ou "}", faz o parsing de statements
+        while self.at().token_type != TokenType::Eof && self.at().token_type != TokenType::CBrace {
+            body.push(self.parse_stmt());
+        }
+
+        self.expect(TokenType::CBrace, "\"}\" Expected.");
+
+        // Retorna o loop statement
+        Stmt {
+            kind: NodeType::LoopStmt,
+            expr: Some(Expr::LoopStmt(LoopStmt {
+                kind: NodeType::LoopStmt,
+                body,
+            })),
+            return_stmt: None,
+        }
+    }
+
+    // Método para analisar uma expressão de acesso a array
+    fn parse_array_access_expr(&mut self) -> Expr {
+        let object_expr: Expr = self.parse_primary_expr(); // Analisa a expressão do objeto/array
+
+        // Verifica se há uma abertura de colchete
+        if self.at().token_type == TokenType::OBracket {
+            self.eat(); // Consome o token de abertura de colchete
+            let index_expr: Expr = self.parse_expr(); // Analisa a expressão do índice do array
+
+            // Verifica se há um fechamento de colchete
+            self.expect(TokenType::CBracket, "\"]\" Expected.");
+
+            // Verifica se há uma atribuição após o índice do array
+            if self.at().token_type == TokenType::Attribution {
+                self.eat(); // Consome o operador de atribuição
+                let value_expr: Expr = self.parse_expr(); // Analisa a expressão do valor atribuído
+
+                self.expect(TokenType::Semicolon, "\";\" Expected.");
+                // Constrói uma expressão de atribuição
+                Expr::AssignmentExpr(AssignmentExpr {
+                    kind: NodeType::AssignmentExpr,
+                    assigne: Box::new(Expr::ArrayAccess(ArrayAccess {
+                        kind: NodeType::ArrayAccess,
+                        array: Box::new(object_expr),
+                        index: Box::new(index_expr),
+                    })),
+                    value: Box::new(value_expr),
+                })
+            } else {
+                // Se não houver uma atribuição, retorna apenas a expressão de acesso a array
+                Expr::ArrayAccess(ArrayAccess {
+                    kind: NodeType::ArrayAccess,
+                    array: Box::new(object_expr),
+                    index: Box::new(index_expr),
+                })
+            }
+        } else {
+            // Se não houver abertura de colchete, retorna apenas a expressão do objeto/array
+            object_expr
+        }
     }
 
     // Método para injeção de código assembly arbitrário
@@ -559,7 +683,7 @@ impl Parser {
 
     // Método para analisar expressões relacionais
     fn parse_relational_expr(&mut self) -> Expr {
-        let mut left: Expr = self.parse_additive_expr(); // Analisa a expressão aditiva à esquerda
+        let mut left: Expr = self.parse_logical_not_expr(); // Analisa a expressão lógica à esquerda
 
         // Loop para analisar operadores relacionais e expressões à direita
         while self.at().token_type == TokenType::LessThan
@@ -568,7 +692,7 @@ impl Parser {
             || self.at().token_type == TokenType::GreaterThanOrEqual
         {
             let operator: String = self.eat().value.clone(); // Consome o operador relacional
-            let right: Expr = self.parse_additive_expr(); // Analisa a expressão aditiva à direita
+            let right: Expr = self.parse_logical_not_expr(); // Analisa a expressão lógica à direita
 
             // Constrói uma expressão binária com o operador relacional e as expressões à esquerda e à direita
             left = Expr::BinaryExpr(BinaryExpr {
@@ -580,6 +704,20 @@ impl Parser {
         }
 
         left // Retorna a expressão relacional construída
+    }
+
+    // Método para analisar uma expressão de negação lógica
+    fn parse_logical_not_expr(&mut self) -> Expr {
+        if self.at().token_type == TokenType::Exclamation {
+            self.eat(); // Consome o operador de negação lógica
+            let operand = self.parse_logical_not_expr(); // Analisa a expressão unária seguinte
+            Expr::LogicalNotExpr(LogicalNotExpr {
+                kind: NodeType::LogicalNotExpr,
+                operand: Box::new(operand),
+            })
+        } else {
+            self.parse_unary_expr() // Chama a análise da próxima expressão unária
+        }
     }
 
     // Método para analisar uma declaração de importação
@@ -848,11 +986,10 @@ impl Parser {
     // Método para analisar uma expressão ternária
     fn parse_ternary_expr(&mut self) -> Box<Expr> {
         // Verifica se o token atual é um identificador que pode ser seguido por um acesso a índice de array
-        if self.at().token_type == TokenType::Identifier {
-            if self.next().token_type == TokenType::OBracket {
-                let object = self.parse_logical_expr(); // Analisa a expressão antes do acesso ao array
-                return Box::new(self.parse_array_access_expr(object)); // Chamada de parse_array_access_expr com o argumento adequado
-            }
+        if self.at().token_type == TokenType::Identifier
+            && self.next().token_type == TokenType::OBracket
+        {
+            return Box::new(self.parse_array_access_expr()); // Chamada de parse_array_access_expr sem argumentos
         }
 
         let condition = self.parse_logical_expr(); // Analisa a condição da expressão ternária
@@ -910,18 +1047,103 @@ impl Parser {
         }
     }
 
-    // Método para analisar uma expressão
+    // Método para analisar uma expressão unária
+    fn parse_unary_expr(&mut self) -> Expr {
+        let expr = match self.at().token_type {
+            TokenType::Minus => {
+                self.eat(); // Consome o operador de menos unário
+                let operand = self.parse_unary_expr(); // Analise a expressão unária seguinte
+                Expr::UnaryMinusExpr(UnaryMinusExpr {
+                    kind: NodeType::UnaryMinusExpr,
+                    operand: Box::new(operand),
+                })
+            }
+            TokenType::Exclamation => {
+                self.eat(); // Consome o operador de negação lógica
+                let operand = self.parse_unary_expr(); // Analise a expressão unária seguinte
+                Expr::LogicalNotExpr(LogicalNotExpr {
+                    kind: NodeType::LogicalNotExpr,
+                    operand: Box::new(operand),
+                })
+            }
+            TokenType::Increment => {
+                self.eat(); // Consome o operador de pré-incremento
+                let operand = self.parse_unary_expr(); // Analise a expressão unária seguinte
+                Expr::PreIncrementExpr(PreIncrementExpr {
+                    kind: NodeType::PreIncrementExpr,
+                    operand: Box::new(operand),
+                })
+            }
+            TokenType::Decrement => {
+                self.eat(); // Consome o operador de pré-decremento
+                let operand = self.parse_unary_expr(); // Analise a expressão unária seguinte
+                Expr::PreDecrementExpr(PreDecrementExpr {
+                    kind: NodeType::PreDecrementExpr,
+                    operand: Box::new(operand),
+                })
+            }
+            _ => return self.parse_postfix_expr(), // Analise a expressão primária e depois verifique por pós-fixação
+        };
+
+        // Se já não houver um semicolon, ele espera que haja
+        if self.at().token_type != TokenType::Semicolon {
+            self.expect(TokenType::Semicolon, "\";\" Expected.");
+        } else {
+            self.eat();
+        }
+
+        expr
+    }
+
+    /// Método para analisar uma expressão pós-fixada (incremento/decremento após a expressão)
+    fn parse_postfix_expr(&mut self) -> Expr {
+        let mut expr: Expr = self.parse_primary_expr(); // Analise a expressão primária
+
+        loop {
+            match self.at().token_type {
+                TokenType::Increment => {
+                    self.eat(); // Consome o operador de pós-incremento
+                    expr = Expr::PostIncrementExpr(PostIncrementExpr {
+                        kind: NodeType::PostIncrementExpr,
+                        operand: Box::new(expr),
+                    });
+                }
+                TokenType::Decrement => {
+                    self.eat(); // Consome o operador de pós-decremento
+                    expr = Expr::PostDecrementExpr(PostDecrementExpr {
+                        kind: NodeType::PostDecrementExpr,
+                        operand: Box::new(expr),
+                    });
+                }
+                _ => break, // Sai do loop se não houver mais operadores pós-fixados
+            }
+        }
+
+        expr // Retorna a expressão final
+    }
+
+    // Atualize o método parse_expr para chamar parse_unary_expr
     fn parse_expr(&mut self) -> Expr {
-        self.parse_assignment_expr() // Chama o método para analisar uma expressão de atribuição
+        if self.at().token_type == TokenType::Minus
+            || self.at().token_type == TokenType::Increment
+            || self.at().token_type == TokenType::Decrement
+            || self.next().token_type == TokenType::Exclamation
+            || self.next().token_type == TokenType::Increment
+            || self.next().token_type == TokenType::Decrement
+        {
+            return self.parse_unary_expr();
+        }
+
+        self.parse_assignment_expr()
     }
 
     // Método para analisar uma expressão de atribuição
     fn parse_assignment_expr(&mut self) -> Expr {
-        let mut left: Expr = self.parse_call_member_expr();
+        let mut left: Expr = *self.parse_ternary_expr();
 
         while self.at().token_type == TokenType::Attribution {
             self.eat();
-            let right: Expr = self.parse_expr();
+            let right: Expr = *self.parse_ternary_expr();
             left = Expr::AssignmentExpr(AssignmentExpr {
                 kind: NodeType::AssignmentExpr,
                 assigne: Box::new(left),
@@ -948,7 +1170,7 @@ impl Parser {
         // Enquanto o token atual for diferente de "]"
         while self.at().token_type != TokenType::CBracket {
             // Coloca na variável de arrays uma expressão
-            array.push(self.parse_expr());
+            array.push(self.parse_array_expr());
 
             // Se houver vígula, consome ela
             if self.at().token_type == TokenType::Comma {
@@ -1112,7 +1334,7 @@ impl Parser {
                 }
                 TokenType::OParen => expr = self.parse_call_expr(expr),
                 TokenType::OBracket => {
-                    expr = self.parse_array_access_expr(expr); // Chama a função para analisar a expressão de acesso a array
+                    expr = self.parse_array_access_expr(); // Chama a função para analisar a expressão de acesso a array
                 }
                 _ => break, // Sai do loop se não houver mais operações
             }
@@ -1135,12 +1357,12 @@ impl Parser {
         // Verifica se a chamada de função está dentro de uma declaração de função
         if self.in_function_declaration_state {
             // Verifica se o próximo token após o fechamento de parênteses é um ponto e vírgula
-            if self.tokens.get(self.index - 1).unwrap().token_type != TokenType::Semicolon
-                && self.at().token_type == TokenType::CBrace
+            if self.at().token_type != TokenType::Semicolon
+                && self.next().token_type == TokenType::CBrace
             {
-                return expr;
-            } else {
                 self.expect(TokenType::Semicolon, "\";\" Expected.");
+            } else {
+                return expr;
             }
         } else if self.at().token_type == TokenType::Semicolon {
             // Se não estiver dentro de uma declaração de função e o próximo token for ponto e vírgula,
@@ -1220,6 +1442,42 @@ impl Parser {
                     value: "Null", // Define o valor como "Null"
                 })
             }
+
+            // Se for um undefined
+            TokenType::Undefined => {
+                self.eat();
+                Expr::UndefinedLiteral(UndefinedLiteral {
+                    kind: NodeType::UndefinedLiteral,
+                    value: "undefined",
+                })
+            }
+
+            // Se for um true
+            TokenType::True => {
+                self.eat();
+                Expr::TrueLiteral(TrueLiteral {
+                    kind: NodeType::TrueLiteral,
+                })
+            }
+
+            // Se for um false
+            TokenType::False => {
+                self.eat();
+                Expr::FalseLiteral(FalseLiteral {
+                    kind: NodeType::FalseLiteral,
+                })
+            }
+
+            // Se for um break;
+            TokenType::Break => {
+                self.eat();
+                // Espera um semicolon
+                self.expect(TokenType::Semicolon, "\";\" Expected.");
+                Expr::BreakExpr(BreakExpr {
+                    kind: NodeType::BreakExpr,
+                })
+            }
+
             TokenType::OParen => {
                 // Se for um parêntese aberto, consome o token e analisa a expressão dentro dos parênteses
                 self.eat();

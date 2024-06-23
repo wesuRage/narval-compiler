@@ -9,15 +9,18 @@ pub enum NodeType {
     IfStmt,
     ReturnStmt,
     AsmStmt,
-    ArrayExpr,
-    ArrayAccess,
+    LoopStmt,
+    ForStmt,
 
     Identifier,
     NullLiteral,
+    UndefinedLiteral,
     NumericLiteral,
     StringLiteral,
     Property,
     ObjectLiteral,
+    TrueLiteral,
+    FalseLiteral,
 
     VarDeclaration,
     FunctionDeclaration,
@@ -28,6 +31,15 @@ pub enum NodeType {
     CallExpr,
     TernaryExpr,
     BlockExpr,
+    BreakExpr,
+    ArrayExpr,
+    ArrayAccess,
+    PreIncrementExpr,
+    PreDecrementExpr,
+    PostIncrementExpr,
+    PostDecrementExpr,
+    LogicalNotExpr,
+    UnaryMinusExpr,
 }
 
 #[derive(Debug, Clone)]
@@ -36,14 +48,17 @@ pub enum Expr {
     ExportStmt(ExportStmt),
     IfStmt(Box<IfStmt>),
     AsmStmt(AsmStmt),
-    ArrayExpr(ArrayExpr),
-    ArrayAccess(ArrayAccess),
+    LoopStmt(LoopStmt),
+    ForStmt(ForStmt),
 
     Identifier(Identifier),
     NullLiteral(NullLiteral),
+    UndefinedLiteral(UndefinedLiteral),
     NumericLiteral(NumericLiteral),
     StringLiteral(StringLiteral),
     ObjectLiteral(ObjectLiteral),
+    TrueLiteral(TrueLiteral),
+    FalseLiteral(FalseLiteral),
 
     VarDeclaration(VarDeclaration),
     FunctionDeclaration(Box<FunctionDeclaration>),
@@ -54,12 +69,86 @@ pub enum Expr {
     CallExpr(CallExpr),
     TernaryExpr(TernaryExpr),
     BlockExpr(Box<BlockExpr>),
+    BreakExpr(BreakExpr),
+    ArrayExpr(ArrayExpr),
+    ArrayAccess(ArrayAccess),
+    LogicalNotExpr(LogicalNotExpr),
+    UnaryMinusExpr(UnaryMinusExpr),
+    PreIncrementExpr(PreIncrementExpr),
+    PreDecrementExpr(PreDecrementExpr),
+    PostIncrementExpr(PostIncrementExpr),
+    PostDecrementExpr(PostDecrementExpr),
 }
 
 #[derive(Debug, Clone)]
 pub struct Program {
     pub kind: NodeType,
     pub body: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TrueLiteral {
+    pub kind: NodeType,
+}
+
+#[derive(Debug, Clone)]
+pub struct FalseLiteral {
+    pub kind: NodeType,
+}
+
+#[derive(Debug, Clone)]
+pub struct PreIncrementExpr {
+    pub kind: NodeType,
+    pub operand: Box<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PreDecrementExpr {
+    pub kind: NodeType,
+    pub operand: Box<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PostIncrementExpr {
+    pub kind: NodeType,
+    pub operand: Box<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PostDecrementExpr {
+    pub kind: NodeType,
+    pub operand: Box<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UnaryMinusExpr {
+    pub kind: NodeType,
+    pub operand: Box<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LogicalNotExpr {
+    pub kind: NodeType,
+    pub operand: Box<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ForStmt {
+    pub kind: NodeType,
+    pub items: Vec<String>,
+    pub sequence: Vec<Expr>,
+    pub body: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LoopStmt {
+    pub kind: NodeType,
+    pub body: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BreakExpr {
+    pub kind: NodeType,
 }
 
 #[derive(Debug, Clone)]
@@ -89,6 +178,12 @@ pub struct StringLiteral {
 
 #[derive(Debug, Clone)]
 pub struct NullLiteral {
+    pub kind: NodeType,
+    pub value: &'static str,
+}
+
+#[derive(Debug, Clone)]
+pub struct UndefinedLiteral {
     pub kind: NodeType,
     pub value: &'static str,
 }
