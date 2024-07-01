@@ -144,5 +144,7 @@ impl Checker {
         for i in stmt.identifiers {
             self.check(i);
         }
+
+        None
     }
 }

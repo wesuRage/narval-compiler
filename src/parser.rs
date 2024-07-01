@@ -660,7 +660,7 @@ impl Parser {
 
     // Método para analisar uma expressão de acesso a array
     fn parse_array_access_expr(&mut self) -> Expr {
-        let object_expr: Expr = self.parse_primary_expr(); // Analisa a expressão do objeto/array
+        let object_expr: Expr = self.parse_call_member_expr(); // Analisa a expressão do objeto/array
 
         // Verifica se há uma abertura de colchete
         if self.at().token_type == TokenType::OBracket {
@@ -785,45 +785,42 @@ impl Parser {
     // Método para analisar um if statement
     fn parse_if_stmt(&mut self) -> Stmt {
         self.eat(); // Consome o token "if"
-        self.expect(TokenType::OParen, "\"(\" Expected."); // Verifica e consome o token "("
 
-        let test: Expr = self.parse_logical_expr(); // Analisa a expressão lógica dentro dos parênteses
+        // Analisa a expressão lógica dentro do if
+        let test: Expr = self.parse_logical_expr();
 
-        self.expect(TokenType::CParen, "\")\" Expected."); // Verifica e consome o token ")"
-        self.expect(TokenType::OBrace, "\"{\" Expected."); // Verifica e consome o token "{"
+        // Espera a abertura de um bloco
+        self.expect(TokenType::OBrace, "\"{\" Expected.");
 
-        let mut consequent: Vec<Stmt> = Vec::new(); // Inicializa um vetor para armazenar o corpo do "if"
-                                                    // Loop para analisar cada instrução dentro do corpo do "if"
+        // Analisa o corpo do "if"
+        let mut consequent: Vec<Stmt> = Vec::new();
         while self.not_eof() && self.at().token_type != TokenType::CBrace {
-            consequent.push(self.parse_stmt()); // Analisa e armazena as instruções no vetor
+            consequent.push(self.parse_stmt());
         }
 
-        self.expect(TokenType::CBrace, "\"}\" Expected."); // Verifica e consome o token "}"
+        self.expect(TokenType::CBrace, "\"}\" Expected.");
 
-        let mut alternate: Option<Vec<Stmt>> = None; // Inicializa uma opção para o bloco "else"
-
-        // Verifica se há um bloco "else"
+        // Analisa o bloco "else", se presente
+        let mut alternate: Option<Vec<Stmt>> = None;
         if self.not_eof() && self.at().token_type == TokenType::Else {
-            self.eat(); // Consome o token "else"
+            self.eat();
 
             // Verifica se há um "if" após o "else"
             if self.not_eof() && self.at().token_type == TokenType::If {
-                alternate = Some(vec![self.parse_if_stmt()]); // Analisa o "if" e armazena no bloco "else"
+                alternate = Some(vec![self.parse_if_stmt()]);
             } else {
-                self.expect(TokenType::OBrace, "\"{\" Expected."); // Verifica e consome o token "{"
+                self.expect(TokenType::OBrace, "\"{\" Expected.");
 
-                let mut else_body: Vec<Stmt> = Vec::new(); // Inicializa um vetor para armazenar o corpo do "else"
-                                                           // Loop para analisar cada instrução dentro do corpo do "else"
+                let mut else_body: Vec<Stmt> = Vec::new();
                 while self.not_eof() && self.at().token_type != TokenType::CBrace {
-                    else_body.push(self.parse_stmt()); // Analisa e armazena as instruções no vetor
+                    else_body.push(self.parse_stmt());
                 }
 
-                self.expect(TokenType::CBrace, "\"}\" Expected."); // Verifica e consome o token "}"
-                alternate = Some(else_body); // Armazena o corpo do "else" na opção
+                self.expect(TokenType::CBrace, "\"}\" Expected.");
+                alternate = Some(else_body);
             }
         }
 
-        // Retorna uma estrutura Stmt representando a declaração "if"
         Stmt {
             kind: NodeType::IfStmt,
             expr: Some(Expr::IfStmt(Box::new(IfStmt {
@@ -836,39 +833,34 @@ impl Parser {
         }
     }
 
-    // Método para analisar expressões lógicas
     fn parse_logical_expr(&mut self) -> Expr {
-        let mut left: Expr = self.parse_equality_expr(); // Analisa a expressão de igualdade à esquerda
+        let mut expr: Expr = self.parse_equality_expr();
 
-        // Loop para analisar operadores lógicos e expressões à direita
         while self.at().token_type == TokenType::And || self.at().token_type == TokenType::Or {
             let operator: String = self.eat().value.clone(); // Consome o operador lógico
-            let right: Expr = self.parse_equality_expr(); // Analisa a expressão de igualdade à direita
+            let right: Expr = self.parse_equality_expr();
 
-            // Constrói uma expressão binária com o operador lógico e as expressões à esquerda e à direita
-            left = Expr::BinaryExpr(BinaryExpr {
+            expr = Expr::BinaryExpr(BinaryExpr {
                 kind: NodeType::BinaryExpr,
-                left: Box::new(left),
+                left: Box::new(expr),
                 right: Box::new(right),
                 operator,
             });
         }
 
-        left // Retorna a expressão lógica construída
+        expr
     }
 
     // Método para analisar expressões de igualdade
     fn parse_equality_expr(&mut self) -> Expr {
-        let mut left: Expr = self.parse_relational_expr(); // Analisa a expressão relacional à esquerda
+        let mut left: Expr = self.parse_relational_expr();
 
-        // Loop para analisar operadores de igualdade e expressões à direita
         while self.at().token_type == TokenType::Equals
             || self.at().token_type == TokenType::NotEquals
         {
-            let operator: String = self.eat().value.clone(); // Consome o operador de igualdade
-            let right: Expr = self.parse_relational_expr(); // Analisa a expressão relacional à direita
+            let operator: String = self.eat().value.clone();
+            let right: Expr = self.parse_relational_expr();
 
-            // Constrói uma expressão binária com o operador de igualdade e as expressões à esquerda e à direita
             left = Expr::BinaryExpr(BinaryExpr {
                 kind: NodeType::BinaryExpr,
                 left: Box::new(left),
@@ -877,23 +869,21 @@ impl Parser {
             });
         }
 
-        left // Retorna a expressão de igualdade construída
+        left
     }
 
     // Método para analisar expressões relacionais
     fn parse_relational_expr(&mut self) -> Expr {
-        let mut left: Expr = self.parse_logical_not_expr(); // Analisa a expressão lógica à esquerda
+        let mut left: Expr = self.parse_logical_not_expr();
 
-        // Loop para analisar operadores relacionais e expressões à direita
         while self.at().token_type == TokenType::LessThan
             || self.at().token_type == TokenType::LessThanOrEqual
             || self.at().token_type == TokenType::GreaterThan
             || self.at().token_type == TokenType::GreaterThanOrEqual
         {
-            let operator: String = self.eat().value.clone(); // Consome o operador relacional
-            let right: Expr = self.parse_logical_not_expr(); // Analisa a expressão lógica à direita
+            let operator: String = self.eat().value.clone();
+            let right: Expr = self.parse_logical_not_expr();
 
-            // Constrói uma expressão binária com o operador relacional e as expressões à esquerda e à direita
             left = Expr::BinaryExpr(BinaryExpr {
                 kind: NodeType::BinaryExpr,
                 left: Box::new(left),
@@ -902,14 +892,14 @@ impl Parser {
             });
         }
 
-        left // Retorna a expressão relacional construída
+        left
     }
 
     // Método para analisar uma expressão de negação lógica
     fn parse_logical_not_expr(&mut self) -> Expr {
         if self.at().token_type == TokenType::Exclamation {
             self.eat(); // Consome o operador de negação lógica
-            let operand = self.parse_logical_not_expr(); // Analisa a expressão unária seguinte
+            let operand: Expr = self.parse_logical_not_expr(); // Analisa a expressão unária seguinte
             Expr::LogicalNotExpr(LogicalNotExpr {
                 kind: NodeType::LogicalNotExpr,
                 operand: Box::new(operand),
@@ -1106,24 +1096,26 @@ impl Parser {
         let mut return_type: String = "undefined".to_string();
 
         if self.at().token_type == TokenType::Colon {
+            self.eat();
             match self.at().token_type {
                 TokenType::Auto
                 | TokenType::Byte
                 | TokenType::Word
                 | TokenType::Dword
-                | TokenType::Qword => return_size = self.eat().value,
-                TokenType::UndefinedType
-                | TokenType::Text
-                | TokenType::Integer
-                | TokenType::Decimal
-                | TokenType::Array
-                | TokenType::Object => {
-                    return_type = self.parse_data_type();
+                | TokenType::Qword => {
+                    return_size = self.eat().value;
+                    match self.at().token_type {
+                        TokenType::UndefinedType
+                        | TokenType::Text
+                        | TokenType::Integer
+                        | TokenType::Decimal
+                        | TokenType::Array
+                        | TokenType::Object => {
+                            return_type = self.parse_data_type();
+                        }
+                        _ => self.error("Expected type after size."),
+                    }
                 }
-                _ => self.error("Unexpected token "),
-            }
-
-            match self.at().token_type {
                 TokenType::UndefinedType
                 | TokenType::Text
                 | TokenType::Integer
@@ -1165,82 +1157,35 @@ impl Parser {
     fn parse_unit_statement_declaration(&mut self) -> Stmt {
         let access_modifier: String = match self.at().token_type {
             TokenType::Public | TokenType::Private => self.eat().value.clone(),
-            _ => "public".to_string(),
+            _ => "private".to_string(),
         };
 
-        if self.tokens.get(self.index + 3).unwrap().token_type != TokenType::Label {
-            let is_constant: bool = matches!(
-                self.at().token_type,
-                TokenType::Auto
-                    | TokenType::Byte
-                    | TokenType::Word
-                    | TokenType::Dword
-                    | TokenType::Qword
-            );
-
-            let mut data_size: String = "".to_string();
-
-            if !is_constant {
-                self.eat();
-                let mut size: Option<String> = Some("1".to_string());
-                // Se houver colchetes, obtém o tamanho especificado
-                if self.at().token_type == TokenType::OBracket {
-                    size = Some(format!(
-                        "{}[{}]",
-                        data_size,
-                        self.expect(TokenType::Number, "Integer Expected.").value
-                    ));
-                    self.expect(TokenType::CBracket, "\"]\" Expected.");
-                }
-
-                data_size = size.unwrap();
-            } else {
-                data_size = self.eat().value;
-            }
-
-            let data_type: String = self.parse_data_type();
-
-            let var = self.parse_var_declaration(data_size, data_type, is_constant);
-
+        if self.at().token_type == TokenType::Label {
             return Stmt {
-                kind: NodeType::UnitVarDeclaration,
-                expr: Some(Expr::UnitVarDeclaration(Box::new(UnitVarDeclaration {
-                    kind: NodeType::UnitVarDeclaration,
-                    access_modifier,
-                    var,
-                }))),
+                kind: NodeType::UnitFunctionDeclaration,
+                expr: Some(Expr::UnitFunctionDeclaration(Box::new(
+                    UnitFunctionDeclaration {
+                        kind: NodeType::UnitFunctionDeclaration,
+                        access_modifier,
+                        function: self.parse_function_declaration(),
+                    },
+                ))),
                 return_stmt: None,
             };
         }
 
-        let function: Expr = self.parse_function_declaration();
-
-        Stmt {
-            kind: NodeType::UnitFunctionDeclaration,
-            expr: Some(Expr::UnitFunctionDeclaration(Box::new(
-                UnitFunctionDeclaration {
-                    kind: NodeType::UnitFunctionDeclaration,
-                    access_modifier,
-                    function,
-                },
-            ))),
-            return_stmt: None,
-        }
+        self.parse_stmt()
     }
 
     // Método para analisar uma unidade (unit)
     fn parse_unit(&mut self) -> Stmt {
         self.eat(); // Consome o token "unit"
 
-        self.expect(TokenType::Colon, "\":\" Expected.");
-
         // Nome da unit
         let name: String = self
             .expect(TokenType::Identifier, "Identifier Expected.")
             .value
             .clone();
-
-        self.expect(TokenType::Colon, "\":\" Expected.");
 
         // Herança de units
         let mut super_units: Option<Vec<String>> = Some(Vec::new());
@@ -1259,7 +1204,6 @@ impl Parser {
             self.expect(TokenType::CParen, "\")\" Expected.");
         }
 
-        self.expect(TokenType::Arrow, "\"=>\" Expected.");
         self.expect(TokenType::OBrace, "\"{\" Expected.");
 
         // Corpo da unit
@@ -1297,7 +1241,7 @@ impl Parser {
             let identifier: String = self
                 .expect(TokenType::Identifier, "Identifier Expected.")
                 .value;
-            // Espera pelo token de atribuição "<<"
+            // Espera pelo token de atribuição "="
             self.expect(TokenType::Attribution, "\"=\" Expected.");
 
             // Parseia a expressão de valor
@@ -1331,7 +1275,7 @@ impl Parser {
             let identifier: String = self
                 .expect(TokenType::Identifier, "Identifier Expected.")
                 .value;
-            // Espera pelo token de atribuição "<<"
+            // Espera pelo token de atribuição "="
             self.expect(TokenType::Attribution, "\"=\" Expected.");
 
             let value: Box<Expr>;
@@ -1476,7 +1420,7 @@ impl Parser {
 
     /// Método para analisar uma expressão pós-fixada (incremento/decremento após a expressão)
     fn parse_postfix_expr(&mut self) -> Expr {
-        let mut expr: Expr = self.parse_primary_expr(); // Analise a expressão primária
+        let mut expr: Expr = self.parse_call_member_expr(); // Analise acesso de array
 
         loop {
             match self.at().token_type {
@@ -1707,11 +1651,9 @@ impl Parser {
                         })),
                     });
                 }
-                TokenType::Colon => {
-                    self.eat();
+                TokenType::OParen => {
                     expr = self.parse_call_expr(expr); // Analisa a expressão de chamada associada
                 }
-                TokenType::OParen => expr = self.parse_call_expr(expr),
                 TokenType::OBracket => {
                     expr = self.parse_array_access_expr(); // Chama a função para analisar a expressão de acesso a array
                 }
@@ -1750,7 +1692,11 @@ impl Parser {
         } else {
             // Se o próximo token não for ponto e vírgula e não estiver dentro de uma declaração de função,
             // ocorreu um erro de sintaxe
-            self.error("\";\" Unexpected.");
+            if self.at().token_type == TokenType::Semicolon
+                && self.next().token_type == TokenType::CBrace
+            {
+                self.error("\";\" Unexpected.");
+            }
         }
 
         expr

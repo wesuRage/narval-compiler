@@ -69,7 +69,6 @@ pub enum TokenType {
     Identifier,
     String,
     // Tokens para construções de controle
-    Arrow,
     Or,
     Attribution,
     Return,
@@ -137,11 +136,11 @@ impl TokenDefinitions {
         literals.insert("%", TokenType::Mod);
         literals.insert("\\", TokenType::Backslash);
         literals.insert("|", TokenType::Pipe);
-        literals.insert("or", TokenType::Or);
+        literals.insert("||", TokenType::Or);
         literals.insert("_", TokenType::UndefinedType);
         literals.insert("!", TokenType::Exclamation);
         literals.insert("?", TokenType::QuestionMark);
-        literals.insert("and", TokenType::And);
+        literals.insert("&&", TokenType::And);
         literals.insert("=", TokenType::Attribution);
         literals.insert("++", TokenType::Increment);
         literals.insert("--", TokenType::Decrement);
