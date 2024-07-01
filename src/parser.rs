@@ -441,7 +441,7 @@ impl Parser {
                                             kind: NodeType::VarDeclaration,
                                             constant: true,
                                             data_size: "auto".to_string(),
-                                            data_type: "undefined".to_string(),
+                                            data_type,
                                             identifier,
                                             value,
                                         })),
@@ -1060,10 +1060,13 @@ impl Parser {
                             | TokenType::Integer
                             | TokenType::Decimal
                             | TokenType::Array
-                            | TokenType::Object => {
+                            | TokenType::Object
+                            | TokenType::LessThan => {
                                 data_type = self.parse_data_type();
                             }
-                            _ => self.error("Unexpected token "),
+                            _ => {
+                                self.error("Unexpected token ");
+                            }
                         }
 
                         match self.at().token_type {
@@ -1075,7 +1078,7 @@ impl Parser {
                             | TokenType::Object => {
                                 data_type = self.parse_data_type();
                             }
-                            _ => self.error("Unexpected token "),
+                            _ => (),
                         }
                     }
 

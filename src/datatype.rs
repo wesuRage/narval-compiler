@@ -5,5 +5,6 @@ pub enum Datatype {
     Boolean,
     Undefined,
     Null,
+    Function(String), //formato disso aqui eh, hmhmhmhmhmhmmhhmhmmhmhmh, "tipo;tipo;tipo+retorno"
     Object(String),
 }

@@ -1,36 +1,3 @@
-// funções
+label func(variavel: qword <integer | decimal>){
 
-// função sem parâmetros
-label greetings {
-  write("Olá, Mundo!");
-}
-
-// função com parâmetros
-label greetings(nome): text {
-  return "Olá {{nome}}";
-}
-
-// tipagem nos parâmetros
-label hipotenusa(cateto1: <decimal | integer>, cateto2: <decimal | integer>) {
-  return (cateto1^2 + cateto2^2) ^ (1/2)
-}
-
-hip: integer = hipotenusa(3, 5); // valor 5
-
-// for loop
-array = ["oi", "bom dia", "tchau"];
-array2 = [[0.321, 0.123], [0.132, 0.321], [0.132, 0.123]];
-
-
-for iterator : array {
-  write(iterator);
-}
-
-for i, j : array2 {
-  write(i + j);
-}
-
-// de 0 a 5 incluindo o 5
-for num : 0..=5 {
-  write(num);
 }

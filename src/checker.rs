@@ -6,7 +6,7 @@ use std::path::Path;
 
 pub struct Namespace {
     parent: Option<Namespace>,
-    names: HashMap<String, Expr>,
+    names: HashMap<String, Datatype>,
 }
 
 impl Namespace {
@@ -16,25 +16,25 @@ impl Namespace {
         }
     }
 
-    pub fn newvar(&mut self, name: String, value: Expr) -> Result<i32, &str> {
+    pub fn newvar(&mut self, name: String, dt: Datatype) -> Result<i32, &str> {
         if self.existsvar(name) {
             return Err(format!("The name \"{}\" already has been declared.", name));
         }
 
-        self.names.insert(name, value);
+        self.names.insert(name, dt);
         Ok(0)
     }
 
-    pub fn setvar(&mut self, name: String, value: Expr) -> Result<i32, &str> {
+    pub fn setvar(&mut self, name: String, dt: Datatype) -> Result<i32, &str> {
         if !self.existsvar(name) {
             if let Some(parent) = self.parent {
-                return parent.setvar(name, value);
+                return parent.setvar(name, dt);
             } else {
                 return Err(format!("The name \"{}\" hasn't been declared.", name));
             }
         }
 
-        self.names.insert(name, value);
+        self.names.insert(name, dt);
         Ok(0)
     }
 
@@ -42,7 +42,7 @@ impl Namespace {
         return self.names.contains_key(name);
     }
 
-    pub fn getvar(self, name: String) -> Result<Option<Expr>, &str> {
+    pub fn getvar(self, name: String) -> Result<Datatype, &str> {
         if !self.existsvar(name) {
             if let Some(parent) = self.parent {
                 return parent.getvar(name);
@@ -57,15 +57,19 @@ impl Namespace {
 pub struct Checker {
     pub program: Program,
     pub namespaces: Vec<Namespace>,
+    pub namespace: Namespace,
 }
 
 type Dt = Option<Datatype>;
 
 impl Checker {
     pub fn new(tree: Program) -> Checker {
+        let nss: Vec<Namespace> = Vec::new();
+        nss.push(Namespace::new());
         Checker {
             program: tree,
-            namespaces: Vec::new(),
+            namespaces: nss,
+            namespace: nss[0],
         }
     }
 
@@ -142,9 +146,25 @@ impl Checker {
 
     fn check_export(&self, stmt: ExportStmt) -> Dt {
         for i in stmt.identifiers {
-            self.check(i);
+            self.check_id(i);
         }
 
         None
+    }
+
+    fn check_id(&self, expr: Identifier) -> Dt {
+        return match self.namespace.getvar(expr.symbol) {
+            Ok(value) => Some(value),
+            Err(error) => {
+                self.error(error);
+                None
+            }
+        };
+    }
+
+    fn check_if(&self, stmt: Box<IfStmt>) -> Dt {
+        let test = (*stmt).test;
+        self.check(Stmt { kind: (*test) });
+        for s in (*stmt).consequent {}
     }
 }
