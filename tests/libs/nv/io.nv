@@ -3,47 +3,77 @@ unit:io: => {
 
   public auto _ :: label:lenof:(auto Text :: string) => {
     asm:([
-      "contar_caracteres:",
-      "\tcmp byte [esi], 0", // verifica se o caractere atual e nulo
-      "\tje fim_contagem", // se for nulo, pula para o fim da contagem
-      "\tinc esi", // incrementa 1 em esi, ou seja, move para o proximo caractere,
-      "\tjmp contar_caracteres", // repete o loop
+      "lenof_prologue:",
+      "PUSH(BASE_POINTER)", // salva o valor do base pointer
+      "MOV(BASE_POINTER, STACK_POINTER)", // configura o novo base pointer
+      "SUB(STACK_POINTER, 4)", // aloca espaço na stack se necessário
 
-      "fim_contagem:",
-      "\tsub esi, {{string}}", // calcula o comprimento da string (ESI - endereco inicial)
-      "\tret", // ESI agora contem o tamanho da string
+      "builtin_lenof_contar_caracteres:",
+      "MOV(SOURCE_INDEX, [BASE_POINTER+8])", // carrega o endereço da string do argumento
+      "CMP(byte [SOURCE_INDEX], 0)", // verifica se o caractere atual é nulo
+      "JE builtin_lenof_fim_contagem", // se for nulo, pula para o fim da contagem
+      "INC(SOURCE_INDEX)", // incrementa 1 em SOURCE_INDEX, ou seja, move para o próximo caractere
+      "JMP builtin_lenof_contar_caracteres", // repete o loop
+
+      "builtin_lenof_fim_contagem:",
+      "SUB(SOURCE_INDEX, [BASE_POINTER+8])", // calcula o comprimento da string (SOURCE_INDEX - endereço inicial)
+      
+      "lenof_epilogue:",
+      "MOV(STACK_POINTER, BASE_POINTER)", // restaura o valor original da stack pointer
+      "POP(BASE_POINTER)", // restaura o valor original do base pointer
+      "RETURN", // retorna
     ]);
   }
 
-  public auto _ :: label:print:(auto _ :: string) => {
+  public auto _ :: label:print:(auto Text :: string) => {
     asm:([
-      "\tmov esi, {{string}}", // carrega o endereco da string em ESI
-      "\tcall lenof", // chama a funcao lenof
+      "print_prologue:",
+      "PUSH(BASE_POINTER)", // salva o valor do base pointer
+      "MOV(BASE_POINTER, STACK_POINTER)", // configura o novo base pointer
+      "SUB(STACK_POINTER, 4)", // aloca espaço na stack se necessário
+
+      "MOV(SOURCE_INDEX, [BASE_POINTER+8])", // carrega o endereço da string do argumento
+      "CALL lenof", // chama a função lenof
       
-      "\tmov eax, 4", // syscall de sys_write
-      "\tmov ebx, 1", // std_out
-      "\tmov ecx, {{string}}", // carrega a string para printar
-      "\tmov edx, esi", // ESI contem o tamanho da string
-      "\tint 0x80", // chama o kernel e executa o codigo.
+      "MOV(SYSTEM_CALL, SYS_WRITE)", // syscall de sys_write
+      "MOV(ARG_1, STD_OUT)", // std_out
+      "MOV(ARG_2, [BASE_POINTER+8])", // carrega a string para printar
+      "MOV(ARG_3, SOURCE_INDEX)", // SOURCE_INDEX contém o tamanho da string
+      "INSTRUCTION", // chama o kernel e executa o código
+
+      "print_epilogue:",
+      "MOV(STACK_POINTER, BASE_POINTER)", // restaura o valor original da stack pointer
+      "POP(BASE_POINTER)", // restaura o valor original do base pointer
+      "RETURN", // retorna
     ]);
   }
 
-  public auto _ :: label:println:(auto _ :: string) => {
+  public auto _ :: label:println:(auto Text :: string) => {
     asm:([
-      "\tmov esi, {{string}}", // carrega o endereco da string em ESI
-      "\tcall lenof", // chama a funcao lenof
-      
-      "\tmov eax, 4", // syscall de sys_write
-      "\tmov ebx, 1", // std_out
-      "\tmov ecx, {{string}}", // carrega a string para printar
-      "\tmov edx, esi", // ESI contem o tamanho da string
-      "\tint 0x80", // chama o kernel e executa o codigo.
+      "print_prologue:",
+      "PUSH(BASE_POINTER)", // salva o valor do base pointer
+      "MOV(BASE_POINTER, STACK_POINTER)", // configura o novo base pointer
+      "SUB(STACK_POINTER, 4)", // aloca espaço na stack se necessário
 
-      "\tmov eax, 4", // syscall de sys_write
-      "\tmov ebx, 1", // std_out
-      "\tmov ecx, BUILTIN_CONST_NEWLINE", // caractere de nova linha
-      "\tmov edx, 1", // tamanho do caractere de nova linha
-      "\tint 0x80" // chama o kernel e executa o codigo.
+      "MOV(SOURCE_INDEX, [BASE_POINTER+8])", // carrega o endereço da string do argumento
+      "CALL lenof", // chama a função lenof
+      
+      "MOV(SYSTEM_CALL, SYS_WRITE)", // syscall de sys_write
+      "MOV(ARG_1, STD_OUT)", // std_out
+      "MOV(ARG_2, [BASE_POINTER+8])", // carrega a string para printar
+      "MOV(ARG_3, SOURCE_INDEX)", // SOURCE_INDEX contém o tamanho da string
+      "INSTRUCTION", // chama o kernel e executa o código
+
+      "MOV(SYSTEM_CALL, SYS_WRITE)", // syscall de sys_write
+      "MOV(ARG_1, STD_OUT)", // std_out
+      "MOV(ARG_2, BUILTIN_CONST_NEWLINE)", // carrega a string para printar
+      "MOV(ARG_3, 1)", // SOURCE_INDEX contém o tamanho da string
+      "INSTRUCTION", // chama o kernel e executa o código
+
+      "print_epilogue:",
+      "MOV(STACK_POINTER, BASE_POINTER)", // restaura o valor original da stack pointer
+      "POP(BASE_POINTER)", // restaura o valor original do base pointer
+      "RETURN", // retorna     
     ]);
   }
 }

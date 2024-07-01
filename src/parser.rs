@@ -6,7 +6,7 @@ use std::collections::HashMap;
 // Implementação de métodos para a enumeração Expr
 impl Expr {
     // Método que retorna o tipo do nó da árvore de sintaxe abstrata (AST)
-    fn kind(&self) -> NodeType {
+    pub fn kind(&self) -> NodeType {
         // O match é usado para verificar o tipo de expressão e retornar o tipo correspondente
         match self {
             Expr::BinaryExpr(_) => NodeType::BinaryExpr, // Se for uma expressão binária
@@ -25,7 +25,8 @@ impl Expr {
             Expr::IfStmt(_) => NodeType::IfStmt, // Se for uma declaração de condicional 'if'
             Expr::TernaryExpr(_) => NodeType::TernaryExpr, // Se for uma expressão ternária
             Expr::BlockExpr(_) => NodeType::BlockExpr, // Se for uma expressão de bloco
-            Expr::AsmStmt(_) => NodeType::AsmStmt, // Se for uma expressão de assembly
+            Expr::AsmStmt(_) => NodeType::AsmStmt, // Se for um statement de assembly
+            Expr::MovStmt(_) => NodeType::MovStmt, // Se for um statement de mov em assembly
             Expr::ArrayExpr(_) => NodeType::ArrayExpr, // Se for um array
             Expr::ArrayAccess(_) => NodeType::ArrayAccess, // Se for um array access
             Expr::UndefinedLiteral(_) => NodeType::UndefinedLiteral, // Se for undefined
@@ -238,6 +239,8 @@ impl Parser {
             TokenType::If => self.parse_if_stmt(),
             // Se o token atual for um asm, analisa um statement de código assembly arbitrário
             TokenType::Asm => self.parse_asm_stmt(),
+            // Se o token atual for um mov, analisa os valores a serem movidos
+            TokenType::Mov => self.parse_mov_stmt(),
             // Se o token atual for um loop, analisa o loop statement
             TokenType::Loop => self.parse_loop_stmt(),
             // Se o token atual for um for, analisa o for statement
@@ -246,7 +249,16 @@ impl Parser {
             TokenType::Unit => self.parse_unit(),
             // Se o token atual for private ou public, analisa um statement unit
             TokenType::Private | TokenType::Public => self.parse_unit_statement_declaration(),
-            // Se o token atual for Resb, Resw, Resd, ou Resq, analisa uma declaração de variável ou função
+            // Analisa declaração de variaveis simples, tipadas ou não
+            TokenType::Val => self.parse_val_var_declaration(),
+            TokenType::Label => {
+                Stmt {
+                    kind: NodeType::FunctionDeclaration,
+                    expr: Some(self.parse_function_declaration()), // Analisa a declaração da função
+                    return_stmt: None,
+                }
+            }
+            // Se o token atual for Resb, Resw, Resd, ou Resq, analisa uma declaração de variável
             TokenType::Resb | TokenType::Resw | TokenType::Resd | TokenType::Resq => {
                 let data_size: String = self.eat().value; // Obtém o tamanho dos dados
 
@@ -267,7 +279,7 @@ impl Parser {
                     return_stmt: None,
                 }
             }
-            // Se o token atual for Auto, Byte, Word, Dword, ou Qword, analisa uma declaração de variável ou função
+            // Se o token atual for Auto, Byte, Word, Dword, ou Qword, analisa uma declaração de variável
             TokenType::Auto
             | TokenType::Byte
             | TokenType::Word
@@ -283,15 +295,6 @@ impl Parser {
                 }
 
                 let tipo: String = self.parse_data_type(); // Analisa o tipo de dado
-                self.expect(TokenType::Separator, "\"::\" Expected.");
-                // Se o próximo token for um Label, analisa uma declaração de função
-                if self.at().token_type == TokenType::Label {
-                    return Stmt {
-                        kind: NodeType::FunctionDeclaration,
-                        expr: Some(self.parse_function_declaration(data_size.value, tipo)), // Analisa a declaração da função
-                        return_stmt: None,
-                    };
-                }
 
                 Stmt {
                     kind: NodeType::VarDeclaration,
@@ -316,13 +319,13 @@ impl Parser {
                     self.next().token_type,
                     TokenType::Semicolon
                         | TokenType::Attribution
-                        | TokenType::OParen
+                        | TokenType::Colon
                         | TokenType::OBracket
                         | TokenType::Eof
                 ) {
                     // Analisa se o retorno é um member expression ou função
                     if self.next().token_type == TokenType::Dot
-                        || self.next().token_type == TokenType::Colon
+                        || self.next().token_type == TokenType::OParen
                     {
                         let expr: Option<Expr> = Some(self.parse_call_member_expr());
                         let return_expr: ReturnStmt = ReturnStmt {
@@ -330,6 +333,7 @@ impl Parser {
                             argument: expr.clone(),
                         };
 
+                        // Se conter um ";" faz o parsing como call expr normal
                         if self.at().token_type == TokenType::Semicolon {
                             self.eat();
                             return Stmt {
@@ -339,6 +343,7 @@ impl Parser {
                             };
                         }
 
+                        // Senão, retorna como return statement
                         Stmt {
                             kind: NodeType::Stmt,
                             expr: None,
@@ -363,6 +368,9 @@ impl Parser {
                     // Loop para permitir chaining de acessos a array
                     loop {
                         match self.next().token_type {
+                            TokenType::Attribution => {
+                                expr = self.parse_assignment_expr();
+                            }
                             TokenType::OParen => {
                                 expr = self.parse_expr(); // Analisa a expressão
                                 let args: Vec<Box<Expr>> = self.parse_arguments(); // Analisa os argumentos da chamada de função
@@ -375,12 +383,73 @@ impl Parser {
                             TokenType::OBracket => {
                                 expr = self.parse_array_access_expr(); // Analisa a expressão de acesso a índice de array
                             }
-                            TokenType::Increment => {}
+
                             TokenType::Semicolon => {
                                 self.error("\";\" Unexpected.");
                                 self.eat();
                                 break;
                             }
+
+                            TokenType::Colon => {
+                                let identifier: String = self.eat().value;
+                                self.eat(); // Consome o token de colon
+                                let data_type: String = self.parse_data_type();
+                                if self.at().token_type == TokenType::Semicolon {
+                                    self.eat();
+
+                                    return Stmt {
+                                        kind: NodeType::VarDeclaration,
+                                        expr: Some(Expr::VarDeclaration(VarDeclaration {
+                                            kind: NodeType::VarDeclaration,
+                                            constant: true,
+                                            data_size: "auto".to_string(),
+                                            data_type,
+                                            identifier,
+                                            value: Box::from(Expr::UndefinedLiteral(
+                                                UndefinedLiteral {
+                                                    kind: NodeType::UndefinedLiteral,
+                                                    value: "undefined",
+                                                },
+                                            )),
+                                        })),
+                                        return_stmt: None,
+                                    };
+                                } else {
+                                    self.expect(TokenType::Attribution, "\"=\" Expected.");
+
+                                    // Parseia a expressão de valor
+                                    let value: Box<Expr>;
+
+                                    match self.at().token_type {
+                                        TokenType::OBracket => {
+                                            value = Box::new(self.parse_array_expr());
+                                        }
+                                        TokenType::OBrace => {
+                                            value = Box::new(self.parse_object_expr())
+                                        }
+                                        _ => {
+                                            value = Box::new(*self.parse_ternary_expr());
+                                        }
+                                    }
+
+                                    // Espera pelo ponto e vírgula ";"
+                                    self.expect(TokenType::Semicolon, "\";\" Expected");
+
+                                    return Stmt {
+                                        kind: NodeType::VarDeclaration,
+                                        expr: Some(Expr::VarDeclaration(VarDeclaration {
+                                            kind: NodeType::VarDeclaration,
+                                            constant: true,
+                                            data_size: "auto".to_string(),
+                                            data_type: "undefined".to_string(),
+                                            identifier,
+                                            value,
+                                        })),
+                                        return_stmt: None,
+                                    };
+                                }
+                            }
+
                             _ => break,
                         }
                     }
@@ -404,15 +473,129 @@ impl Parser {
         }
     }
 
+    fn parse_val_var_declaration(&mut self) -> Stmt {
+        self.eat();
+        let identifier: String = self.eat().value;
+
+        // faz parsing de expressões como "val identifier;"
+        if self.at().token_type == TokenType::Semicolon {
+            self.eat();
+
+            return Stmt {
+                kind: NodeType::VarDeclaration,
+                expr: Some(Expr::VarDeclaration(VarDeclaration {
+                    kind: NodeType::VarDeclaration,
+                    constant: false,
+                    data_size: "auto".to_string(),
+                    data_type: "undefined".to_string(),
+                    identifier,
+                    value: Box::from(Expr::UndefinedLiteral(UndefinedLiteral {
+                        kind: NodeType::UndefinedLiteral,
+                        value: "undefined",
+                    })),
+                })),
+                return_stmt: None,
+            };
+        }
+
+        // faz o parsing de "val identifier: type;" e "val identifier: type = value"
+        if self.at().token_type == TokenType::Colon {
+            self.eat();
+
+            let data_type: String = self.parse_data_type();
+            if self.at().token_type == TokenType::Semicolon {
+                self.eat();
+
+                return Stmt {
+                    kind: NodeType::VarDeclaration,
+                    expr: Some(Expr::VarDeclaration(VarDeclaration {
+                        kind: NodeType::VarDeclaration,
+                        constant: false,
+                        data_size: "auto".to_string(),
+                        data_type,
+                        identifier,
+                        value: Box::from(Expr::UndefinedLiteral(UndefinedLiteral {
+                            kind: NodeType::UndefinedLiteral,
+                            value: "undefined",
+                        })),
+                    })),
+                    return_stmt: None,
+                };
+            } else {
+                self.expect(TokenType::Attribution, "\"=\" Expected.");
+
+                // Parseia a expressão de valor
+                let value: Box<Expr>;
+
+                match self.at().token_type {
+                    TokenType::OBracket => {
+                        value = Box::new(self.parse_array_expr());
+                    }
+
+                    TokenType::OBrace => value = Box::new(self.parse_object_expr()),
+                    _ => {
+                        value = Box::new(*self.parse_ternary_expr());
+                    }
+                }
+
+                // Espera pelo ponto e vírgula ";"
+                self.expect(TokenType::Semicolon, "\";\" Expected");
+
+                return Stmt {
+                    kind: NodeType::VarDeclaration,
+                    expr: Some(Expr::VarDeclaration(VarDeclaration {
+                        kind: NodeType::VarDeclaration,
+                        constant: false,
+                        data_size: "auto".to_string(),
+                        data_type: "undefined".to_string(),
+                        identifier,
+                        value,
+                    })),
+                    return_stmt: None,
+                };
+            }
+        } else {
+            self.expect(TokenType::Attribution, "\"=\" Expected.");
+
+            // Parseia a expressão de valor
+            let value: Box<Expr>;
+
+            match self.at().token_type {
+                TokenType::OBracket => {
+                    value = Box::new(self.parse_array_expr());
+                }
+
+                TokenType::OBrace => value = Box::new(self.parse_object_expr()),
+                _ => {
+                    value = Box::new(*self.parse_ternary_expr());
+                }
+            }
+
+            // Espera pelo ponto e vírgula ";"
+            self.expect(TokenType::Semicolon, "\";\" Expected");
+            return Stmt {
+                kind: NodeType::VarDeclaration,
+                expr: Some(Expr::VarDeclaration(VarDeclaration {
+                    kind: NodeType::VarDeclaration,
+                    constant: false,
+                    data_size: "auto".to_string(),
+                    data_type: "undefined".to_string(),
+                    identifier,
+                    value,
+                })),
+                return_stmt: None,
+            };
+        }
+    }
+
     fn parse_for_stmt(&mut self) -> Stmt {
         self.eat(); // consome o token de for
 
         // Espera o token de "(" para o início dos itens
-        self.expect(TokenType::OParen, "\"(\" Expected.");
         let mut items: Vec<String> = Vec::new();
 
         // Enquanto não for end of file ou "}", faz o parsing de statements
-        while self.at().token_type != TokenType::Eof && self.at().token_type != TokenType::CParen {
+        while self.at().token_type != TokenType::Eof && self.at().token_type != TokenType::Colon {
             items.push(
                 self.expect(TokenType::Identifier, "Identifier Expected.")
                     .value,
@@ -424,31 +607,12 @@ impl Parser {
             }
         }
 
-        // Espera o token de ")" para o fim dos itens
-        self.expect(TokenType::CParen, "\")\" Expected.");
         self.expect(TokenType::Colon, "\":\" Expected.");
 
-        // Espera o token de "(" para o início da sequência
-        self.expect(TokenType::OParen, "\"(\" Expected.");
-        let mut sequence: Vec<Expr> = Vec::new();
-
-        // Enquanto não for end of file ou "}", faz o parsing de statements
-        while self.at().token_type != TokenType::Eof && self.at().token_type != TokenType::CParen {
-            sequence.push(self.parse_array_access_expr());
-
-            // Se houver uma vírgula, consome-a
-            if self.at().token_type == TokenType::Comma {
-                self.eat();
-            }
-        }
-
-        // Espera o token de "(" para o fim dos itens
-        self.expect(TokenType::CParen, "\")\" Expected.");
-
-        // Espera o token de Arrow para o começo do corpo do for loop
-        self.expect(TokenType::Arrow, "\"=>\" Expected.");
+        let sequence: Box<Expr> = Box::new(self.parse_array_access_expr());
 
         self.expect(TokenType::OBrace, "\"{\" Expected.");
+
         let mut body: Vec<Stmt> = Vec::new();
 
         // Enquanto não for end of file ou "}", faz o parsing de statements
@@ -536,12 +700,40 @@ impl Parser {
         }
     }
 
+    // Método para analias mov statements
+    fn parse_mov_stmt(&mut self) -> Stmt {
+        self.eat(); // Consome o token de "mov"
+
+        self.expect(TokenType::OParen, "\"(\" Expected.");
+        let mut values: Vec<(String, String)> = Vec::new();
+
+        let val1 = self.expect(TokenType::String, "String Expected.").value;
+        self.expect(TokenType::Comma, "\",\" Expected.");
+        let val2 = self.expect(TokenType::String, "String Expected.").value;
+
+        values.push((val1, val2));
+
+        self.expect(TokenType::CParen, "\")\" Expected.");
+
+        self.expect(TokenType::Semicolon, "\";\" Expected.");
+
+        let expr = Some(Expr::MovStmt(MovStmt {
+            kind: NodeType::MovStmt,
+            values,
+        }));
+
+        Stmt {
+            kind: NodeType::MovStmt,
+            expr,
+            return_stmt: None,
+        }
+    }
+
     // Método para injeção de código assembly arbitrário
     fn parse_asm_stmt(&mut self) -> Stmt {
         let mut asm_code: Vec<Expr> = Vec::new();
 
         self.eat();
-        self.expect(TokenType::Colon, "\":\" Expected.");
         self.expect(TokenType::OParen, "\"(\" Expected.");
 
         while self.at().token_type != TokenType::CParen {
@@ -730,7 +922,6 @@ impl Parser {
     // Método para analisar uma declaração de importação
     fn parse_import_stmt(&mut self) -> Stmt {
         self.eat(); // Consome o token "import"
-        self.expect(TokenType::Colon, "\":\" Expected."); // Verifica e consome o token ":"
         self.expect(TokenType::OParen, "\"(\" Expected."); // Verifica e consome o token "("
         self.expect(TokenType::OBracket, "\"[\" Expected."); // Verifica e consome o token "["
 
@@ -772,7 +963,7 @@ impl Parser {
 
         // Retorna uma estrutura Stmt representando a declaração de importação
         Stmt {
-            kind: NodeType::Stmt,
+            kind: NodeType::ImportStmt,
             expr: Some(Expr::ImportStmt(ImportStmt {
                 kind: NodeType::Stmt,
                 paths,
@@ -784,7 +975,6 @@ impl Parser {
     // Método para analisar uma declaração de exportação
     fn parse_export_stmt(&mut self) -> Stmt {
         self.eat(); // Consome o token "export"
-        self.expect(TokenType::Colon, "\":\" Expected."); // Verifica e consome o token ":"
         self.expect(TokenType::OParen, "\"(\" Expected."); // Verifica e consome o token "("
         self.expect(TokenType::OBracket, "\"[\" Expected."); // Verifica e consome o token "["
 
@@ -811,7 +1001,7 @@ impl Parser {
 
         // Retorna uma estrutura Stmt representando a declaração de exportação
         Stmt {
-            kind: NodeType::Stmt,
+            kind: NodeType::ExportStmt,
             expr: Some(Expr::ExportStmt(ExportStmt {
                 kind: NodeType::Stmt,
                 identifiers,
@@ -842,14 +1032,12 @@ impl Parser {
     }
 
     // Método para analisar a declaração de uma função
-    fn parse_function_declaration(&mut self, return_size: String, return_type: String) -> Expr {
+    fn parse_function_declaration(&mut self) -> Expr {
         self.eat(); // Consome o token "label"
-        self.expect(TokenType::Colon, "\":\" Expected."); // Verifica e consome o token ":"
         let name: String = self
             .expect(TokenType::Identifier, "Function name expected") // Analisa e armazena o nome da função
             .value;
-        self.expect(TokenType::Colon, "\":\" Expected."); // Verifica e consome o token ":"
-
+        //oi1
         let mut parameters: Vec<(String, String, String)> = Vec::new(); // Inicializa um vetor para armazenar os parâmetros da função
 
         // Verifica se há parênteses para delimitar os parâmetros
@@ -863,12 +1051,43 @@ impl Parser {
             } else {
                 // Loop para analisar cada parâmetro
                 while self.at().token_type != TokenType::CParen {
-                    let size = self.eat().value.clone(); // Obtém o tamanho do parâmetro
-                    let data_type = self.parse_data_type(); // Analisa e obtém o tipo de dados do parâmetro
-                    self.expect(TokenType::Separator, "\"::\" Expected."); // Verifica e consome o token "::"
-                    let identifier = self
+                    let identifier: String = self
                         .expect(TokenType::Identifier, "Parameter name expected") // Analisa e armazena o nome do parâmetro
                         .value;
+
+                    let mut size: String = "undefined".to_string(); // Obtém o tamanho do parâmetro
+                    let mut data_type: String = "undefined".to_string(); // Analisa e obtém o tipo de dados do parâmetro
+                    if self.at().token_type == TokenType::Colon {
+                        self.eat();
+                        match self.at().token_type {
+                            TokenType::Auto
+                            | TokenType::Byte
+                            | TokenType::Word
+                            | TokenType::Dword
+                            | TokenType::Qword => size = self.eat().value,
+                            TokenType::UndefinedType
+                            | TokenType::Text
+                            | TokenType::Integer
+                            | TokenType::Decimal
+                            | TokenType::Array
+                            | TokenType::Object => {
+                                data_type = self.parse_data_type();
+                            }
+                            _ => self.error("Unexpected token "),
+                        }
+
+                        match self.at().token_type {
+                            TokenType::UndefinedType
+                            | TokenType::Text
+                            | TokenType::Integer
+                            | TokenType::Decimal
+                            | TokenType::Array
+                            | TokenType::Object => {
+                                data_type = self.parse_data_type();
+                            }
+                            _ => self.error("Unexpected token "),
+                        }
+                    }
 
                     parameters.push((size, data_type, identifier)); // Adiciona o parâmetro ao vetor de parâmetros
 
@@ -883,7 +1102,40 @@ impl Parser {
             }
         }
 
-        self.expect(TokenType::Arrow, "\"=>\" Expected."); // Verifica e consome o token "=>"
+        let mut return_size: String = "undefined".to_string();
+        let mut return_type: String = "undefined".to_string();
+
+        if self.at().token_type == TokenType::Colon {
+            match self.at().token_type {
+                TokenType::Auto
+                | TokenType::Byte
+                | TokenType::Word
+                | TokenType::Dword
+                | TokenType::Qword => return_size = self.eat().value,
+                TokenType::UndefinedType
+                | TokenType::Text
+                | TokenType::Integer
+                | TokenType::Decimal
+                | TokenType::Array
+                | TokenType::Object => {
+                    return_type = self.parse_data_type();
+                }
+                _ => self.error("Unexpected token "),
+            }
+
+            match self.at().token_type {
+                TokenType::UndefinedType
+                | TokenType::Text
+                | TokenType::Integer
+                | TokenType::Decimal
+                | TokenType::Array
+                | TokenType::Object => {
+                    return_type = self.parse_data_type();
+                }
+                _ => self.error("Unexpected token "),
+            }
+        }
+
         self.expect(TokenType::OBrace, "\"{\" Expected."); // Verifica e consome o token "{"
 
         self.in_function_declaration_state = true; // Define o estado de estar dentro de uma declaração de função
@@ -917,7 +1169,7 @@ impl Parser {
         };
 
         if self.tokens.get(self.index + 3).unwrap().token_type != TokenType::Label {
-            let constant: bool = matches!(
+            let is_constant: bool = matches!(
                 self.at().token_type,
                 TokenType::Auto
                     | TokenType::Byte
@@ -928,7 +1180,7 @@ impl Parser {
 
             let mut data_size: String = "".to_string();
 
-            if !constant {
+            if !is_constant {
                 self.eat();
                 let mut size: Option<String> = Some("1".to_string());
                 // Se houver colchetes, obtém o tamanho especificado
@@ -948,108 +1200,20 @@ impl Parser {
 
             let data_type: String = self.parse_data_type();
 
-            self.expect(TokenType::Separator, "\"::\" Expected.");
-
-            let identifier: String = self
-                .expect(TokenType::Identifier, "Identifier Expected.")
-                .value;
-
-            // Espera pelo token de atribuição "<<"
-            self.expect(TokenType::Attribution, "\"<<\" Expected.");
-
-            // Parseia a expressão de valor
-            let value: Box<Expr>;
-
-            match self.at().token_type {
-                TokenType::OBracket => {
-                    value = Box::new(self.parse_array_expr());
-                }
-
-                TokenType::OBrace => value = Box::new(self.parse_object_expr()),
-                _ => {
-                    value = Box::new(*self.parse_ternary_expr());
-                }
-            }
-
-            // Espera pelo ponto e vírgula ";"
-            self.expect(TokenType::Semicolon, "\";\" Expected");
+            let var = self.parse_var_declaration(data_size, data_type, is_constant);
 
             return Stmt {
                 kind: NodeType::UnitVarDeclaration,
                 expr: Some(Expr::UnitVarDeclaration(Box::new(UnitVarDeclaration {
                     kind: NodeType::UnitVarDeclaration,
                     access_modifier,
-                    constant,
-                    data_size,
-                    data_type,
-                    identifier,
-                    value,
+                    var,
                 }))),
                 return_stmt: None,
             };
         }
 
-        let return_size: String = self.eat().value;
-
-        let return_type: String = self.parse_data_type();
-
-        self.expect(TokenType::Separator, "\"::\" Expected.");
-
-        self.eat(); // Consome o token "label"
-        self.expect(TokenType::Colon, "\":\" Expected."); // Verifica e consome o token ":"
-
-        let name: String = self
-            .expect(TokenType::Identifier, "Method name Expected.") // Analisa e armazena o nome do método
-            .value;
-
-        self.expect(TokenType::Colon, "\":\" Expected."); // Verifica e consome o token ":"
-
-        let mut parameters: Vec<(String, String, String)> = Vec::new(); // Inicializa um vetor para armazenar os parâmetros do método
-
-        // Verifica se há parênteses para delimitar os parâmetros
-        if self.at().token_type == TokenType::OParen {
-            self.eat(); // Consome o token "("
-
-            // Verifica se há parâmetros dentro dos parênteses
-            if self.at().token_type == TokenType::CParen {
-                self.error("Parameter(s) Expected inside parentheses."); // Emite um erro se não houver parâmetros
-                self.eat(); // Consome o token ")"
-            } else {
-                // Loop para analisar cada parâmetro
-                while self.at().token_type != TokenType::CParen {
-                    let size: String = self.eat().value.clone(); // Obtém o tamanho do parâmetro
-                    let data_type: String = self.parse_data_type(); // Analisa e obtém o tipo de dados do parâmetro
-                    self.expect(TokenType::Separator, "\"::\" Expected."); // Verifica e consome o token "::"
-                    let identifier = self
-                        .expect(TokenType::Identifier, "Parameter name expected") // Analisa e armazena o nome do parâmetro
-                        .value;
-
-                    parameters.push((size, data_type, identifier)); // Adiciona o parâmetro ao vetor de parâmetros
-
-                    if self.at().token_type == TokenType::Comma {
-                        self.eat(); // Consome a vírgula entre os parâmetros
-                    } else if self.at().token_type != TokenType::CParen {
-                        self.error("Expected ',' or ')' after parameter"); // Emite um erro se não houver uma vírgula ou parêntese após o parâmetro
-                        break;
-                    }
-                }
-                self.expect(TokenType::CParen, "\")\" Expected."); // Verifica e consome o token ")"
-            }
-        }
-
-        self.expect(TokenType::Arrow, "\"=>\" Expected."); // Verifica e consome o token "=>"
-        self.expect(TokenType::OBrace, "\"{\" Expected."); // Verifica e consome o token "{"
-
-        let mut body: Vec<Stmt> = Vec::new(); // Inicializa um vetor para armazenar o corpo do método
-
-        // Loop para analisar cada instrução no corpo do método
-        while self.at().token_type != TokenType::Eof && self.at().token_type != TokenType::CBrace {
-            body.push(self.parse_stmt()); // Analisa e adiciona a instrução ao vetor de corpo
-        }
-
-        self.expect(TokenType::CBrace, "\"}\" Expected."); // Verifica e consome o token "}"
-
-        // Retorna um statement com a Expr representando a declaração do método
+        let function: Expr = self.parse_function_declaration();
 
         Stmt {
             kind: NodeType::UnitFunctionDeclaration,
@@ -1057,11 +1221,7 @@ impl Parser {
                 UnitFunctionDeclaration {
                     kind: NodeType::UnitFunctionDeclaration,
                     access_modifier,
-                    return_size,
-                    return_type,
-                    name,
-                    parameters,
-                    body,
+                    function,
                 },
             ))),
             return_stmt: None,
@@ -1074,6 +1234,7 @@ impl Parser {
 
         self.expect(TokenType::Colon, "\":\" Expected.");
 
+        // Nome da unit
         let name: String = self
             .expect(TokenType::Identifier, "Identifier Expected.")
             .value
@@ -1081,6 +1242,7 @@ impl Parser {
 
         self.expect(TokenType::Colon, "\":\" Expected.");
 
+        // Herança de units
         let mut super_units: Option<Vec<String>> = Some(Vec::new());
 
         if self.at().token_type == TokenType::OParen {
@@ -1100,6 +1262,7 @@ impl Parser {
         self.expect(TokenType::Arrow, "\"=>\" Expected.");
         self.expect(TokenType::OBrace, "\"{\" Expected.");
 
+        // Corpo da unit
         let mut body: Vec<Stmt> = Vec::new();
         while self.not_eof() && self.at().token_type != TokenType::CBrace {
             body.push(self.parse_stmt());
@@ -1135,7 +1298,7 @@ impl Parser {
                 .expect(TokenType::Identifier, "Identifier Expected.")
                 .value;
             // Espera pelo token de atribuição "<<"
-            self.expect(TokenType::Attribution, "\"<<\" Expected.");
+            self.expect(TokenType::Attribution, "\"=\" Expected.");
 
             // Parseia a expressão de valor
             let value: Box<Expr>;
@@ -1164,14 +1327,12 @@ impl Parser {
                 value,
             })
         } else {
-            // Espera pelo token de separador "::"
-            self.expect(TokenType::Separator, "\"::\" Expected.");
             // Pega o identificador da variável
             let identifier: String = self
                 .expect(TokenType::Identifier, "Identifier Expected.")
                 .value;
             // Espera pelo token de atribuição "<<"
-            self.expect(TokenType::Attribution, "\"<<\" Expected.");
+            self.expect(TokenType::Attribution, "\"=\" Expected.");
 
             let value: Box<Expr>;
 
@@ -1220,12 +1381,12 @@ impl Parser {
 
         let consequent: Box<Expr> = self.parse_nested_ternary_expr(); // Analisa a expressão consequente
 
-        // Verifica se há um separador "::"
-        if self.at().token_type != TokenType::Separator {
-            self.error("\"::\" Expected after '?' in ternary expression."); // Emite um erro se não houver separador "::"
+        // Verifica se há um token ":"
+        if self.at().token_type != TokenType::Colon {
+            self.error("\":\" Expected after '?' in ternary expression.");
             return Box::new(condition); // Retorna a condição em caso de erro
         }
-        self.eat(); // Consome o separador "::"
+        self.eat(); // Consome o token ":"
 
         let alternate = self.parse_nested_ternary_expr(); // Analisa a expressão alternativa
 

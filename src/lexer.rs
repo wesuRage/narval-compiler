@@ -40,6 +40,7 @@ pub enum TokenType {
     QuestionMark,
     And,
     Asm,
+    Mov,
     Increment,
     Decrement,
     // Tokens para tipos de dados e palavras-chave
@@ -70,7 +71,6 @@ pub enum TokenType {
     // Tokens para construções de controle
     Arrow,
     Or,
-    Separator,
     Attribution,
     Return,
     Import,
@@ -87,6 +87,8 @@ pub enum TokenType {
     // Tokens para modificadores de acesso
     Private,
     Public,
+    // Token pra declarar constantes
+    Val,
     // Token especial para marcação de final de arquivo
     Eof,
     // Token especial para representar um caractere inválido
@@ -135,14 +137,12 @@ impl TokenDefinitions {
         literals.insert("%", TokenType::Mod);
         literals.insert("\\", TokenType::Backslash);
         literals.insert("|", TokenType::Pipe);
-        literals.insert("||", TokenType::Or);
+        literals.insert("or", TokenType::Or);
         literals.insert("_", TokenType::UndefinedType);
         literals.insert("!", TokenType::Exclamation);
         literals.insert("?", TokenType::QuestionMark);
-        literals.insert("&&", TokenType::And);
-        literals.insert("::", TokenType::Separator);
-        literals.insert("<<", TokenType::Attribution);
-        literals.insert("=>", TokenType::Arrow);
+        literals.insert("and", TokenType::And);
+        literals.insert("=", TokenType::Attribution);
         literals.insert("++", TokenType::Increment);
         literals.insert("--", TokenType::Decrement);
         // Tipos de dados e palavras-chave
@@ -151,6 +151,7 @@ impl TokenDefinitions {
         keywords.insert("unit", TokenType::Unit);
         keywords.insert("as", TokenType::As);
         keywords.insert("asm", TokenType::Asm);
+        keywords.insert("mov", TokenType::Mov);
         keywords.insert("private", TokenType::Private);
         keywords.insert("public", TokenType::Public);
         keywords.insert("undefined", TokenType::Undefined);
@@ -164,13 +165,13 @@ impl TokenDefinitions {
         keywords.insert("continue", TokenType::Continue);
         keywords.insert("true", TokenType::True);
         keywords.insert("false", TokenType::False);
-        keywords.insert("Null", TokenType::Null);
-        keywords.insert("Bool", TokenType::Bool);
-        keywords.insert("Integer", TokenType::Integer);
-        keywords.insert("Decimal", TokenType::Decimal);
+        keywords.insert("null", TokenType::Null);
+        keywords.insert("boolean", TokenType::Bool);
+        keywords.insert("integer", TokenType::Integer);
+        keywords.insert("decimal", TokenType::Decimal);
         keywords.insert("Object", TokenType::Object);
         keywords.insert("auto", TokenType::Auto);
-        keywords.insert("Text", TokenType::Text);
+        keywords.insert("text", TokenType::Text);
         keywords.insert("Array", TokenType::Array);
         keywords.insert("resb", TokenType::Resb);
         keywords.insert("resw", TokenType::Resw);
@@ -181,7 +182,7 @@ impl TokenDefinitions {
         keywords.insert("dword", TokenType::Dword);
         keywords.insert("qword", TokenType::Qword);
         keywords.insert("label", TokenType::Label);
-
+        keywords.insert("val", TokenType::Val);
         TokenDefinitions { literals, keywords }
     }
 }
@@ -196,6 +197,12 @@ pub struct Token {
     pub position: (usize, usize), // Posição de início e fim do token no código fonte
     pub filename: String,         // Nome do arquivo fonte
     pub message: Option<String>,  // Mensagem de erro associada ao token (se houver)
+}
+
+fn substring(s: &str, i: usize, j: usize) -> Option<&str> {
+    let start_byte = s.char_indices().nth(i).map(|(k, _)| k)?;
+    let end_byte = s.char_indices().nth(j).map(|(k, _)| k)?;
+    s.get(start_byte..end_byte)
 }
 
 // Estrutura principal responsável pela análise léxica do código fonte

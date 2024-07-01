@@ -9,6 +9,7 @@ pub enum NodeType {
     IfStmt,
     ReturnStmt,
     AsmStmt,
+    MovStmt,
     LoopStmt,
     ForStmt,
 
@@ -51,6 +52,7 @@ pub enum Expr {
     ExportStmt(ExportStmt),
     IfStmt(Box<IfStmt>),
     AsmStmt(AsmStmt),
+    MovStmt(MovStmt),
     LoopStmt(LoopStmt),
     ForStmt(ForStmt),
 
@@ -104,22 +106,20 @@ pub struct UnitDeclaration {
 pub struct UnitFunctionDeclaration {
     pub kind: NodeType,
     pub access_modifier: String,
-    pub return_size: String,
-    pub return_type: String,
-    pub name: String,
-    pub parameters: Vec<(String, String, String)>,
-    pub body: Vec<Stmt>,
+    pub function: Expr,
 }
 
 #[derive(Debug, Clone)]
 pub struct UnitVarDeclaration {
     pub kind: NodeType,
     pub access_modifier: String,
-    pub constant: bool,
-    pub data_size: String,
-    pub data_type: String,
-    pub identifier: String,
-    pub value: Box<Expr>,
+    pub var: Expr,
+}
+
+#[derive(Debug, Clone)]
+pub struct MovStmt {
+    pub kind: NodeType,
+    pub values: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone)]
@@ -172,7 +172,7 @@ pub struct LogicalNotExpr {
 pub struct ForStmt {
     pub kind: NodeType,
     pub items: Vec<String>,
-    pub sequence: Vec<Expr>,
+    pub sequence: Box<Expr>,
     pub body: Vec<Stmt>,
 }
 

@@ -4,5 +4,6 @@ pub enum Datatype {
     String,
     Boolean,
     Undefined,
+    Null,
     Object(String),
 }

@@ -42,7 +42,7 @@ impl Namespace {
         return self.names.contains_key(name);
     }
 
-    pub fn getvar(self, name: String) -> Result<Expr, &str> {
+    pub fn getvar(self, name: String) -> Result<Option<Expr>, &str> {
         if !self.existsvar(name) {
             if let Some(parent) = self.parent {
                 return parent.getvar(name);
@@ -56,27 +56,30 @@ impl Namespace {
 }
 pub struct Checker {
     pub program: Program,
-    pub namespaces: Vector<Namespace>,
+    pub namespaces: Vec<Namespace>,
 }
 
 type Dt = Option<Datatype>;
 
 impl Checker {
     pub fn new(tree: Program) -> Checker {
-        Checker { program: tree }
+        Checker {
+            program: tree,
+            namespaces: Vec::new(),
+        }
     }
 
-    pub fn check(&mut self, node: Stmt) -> Dt {
-        let mut stmt = node.expr;
-        match Some(stmt).kind {
+    fn check(&mut self, node: Stmt) -> Dt {
+        let mut stmt = node.expr.unwrap();
+        match stmt.kind() {
             NodeType::ImportStmt => self.check_import(stmt),
             NodeType::ExportStmt => self.check_export(stmt),
             NodeType::IfStmt => self.check_if(stmt),
             NodeType::ReturnStmt => self.check_return(stmt),
             NodeType::AsmStmt => self.check_asmpiece(stmt),
             NodeType::Identifier => self.check_id(stmt),
-            NodeType::NullLiteral => Some(()),
-            NodeType::NumericLiteral => Some(()),
+            NodeType::NullLiteral => Some(Datatype::Null),
+            NodeType::NumericLiteral => Some(Datatype),
             NodeType::StringLiteral => Some(()),
             NodeType::Property => self.check_prop(stmt),
             NodeType::ObjectLiteral => self.check_object(stmt),
@@ -90,17 +93,33 @@ impl Checker {
             NodeType::BlockExpr => self.check_blockexpr(stmt),
             NodeType::ArrayExpr => self.check_newarr(stmt),
             NodeType::ArrayAccess => self.check_getarr(stmt),
+            NodeType::MovStmt => self.check_move(stmt),
+            NodeType::LoopStmt => self.check_loop(stmt),
+            NodeType::ForStmt => self.check_forloop(stmt),
+            NodeType::UndefinedLiteral => self.check_undefined(stmt), //ajeitou aeee
+            NodeType::TrueLiteral => self.check_ifistrue(stmt),
+            NodeType::FalseLiteral => self.check_ifisfalse(stmt),
+            NodeType::UnitDeclaration => self.check_unit(stmt),
+            NodeType::UnitVarDeclaration => self.check_attr(stmt),
+            NodeType::UnitFunctionDeclaration => self.check_method(stmt),
+            NodeType::BreakExpr => self.check_break(stmt),
+            NodeType::PreIncrementExpr => self.check_plusplusN(stmt),
+            NodeType::PreDecrementExpr => self.check_subsubN(stmt),
+            NodeType::PostIncrementExpr => self.check_Nplusplus(stmt),
+            NodeType::PostDecrementExpr => self.check_Nsubsub(stmt),
+            NodeType::LogicalNotExpr => self.check_not(stmt),
+            NodeType::UnaryMinusExpr => self.check_neg(stmt),
             _ => Some(()),
         }
     }
 
-    fn check_tree(&mut self) {
+    pub fn check_tree(&mut self) {
         for stmt in &self.program.body {
             self.check(stmt);
         }
     }
 
-    fn check_import(&mut self, stmt: ImportStmt) -> dt {
+    fn check_import(&mut self, stmt: ImportStmt) -> Dt {
         let mut i = 0;
         for (path, alias) in stmt.paths.iter_mut() {
             if path.starts_with("nv:") {
@@ -108,8 +127,22 @@ impl Checker {
             }
             let does_it_exists = Path::new(path).exists();
             if !does_it_exists {
-                self.error(stmt)
+                self.error("Bad Path.")
             }
+        }
+        None
+    }
+
+    fn error(&self, message: &str) {
+        println!(
+            "Oh não! vamos ver o seu erro, se vale a pena relatar: {}",
+            message
+        );
+    }
+
+    fn check_export(&self, stmt: ExportStmt) -> Dt {
+        for i in stmt.identifiers {
+            self.check(i);
         }
     }
 }
