@@ -1,3 +1,3 @@
-label func(variavel: qword <integer | decimal>){
+auto penis: text = 256;
 
-}
+write(penis);

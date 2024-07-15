@@ -1,52 +1,8 @@
 use crate::ast::*;
 use crate::colors::{escape, printc};
+use crate::datatype::*;
 use crate::lexer::{Token, TokenType};
 use std::collections::HashMap;
-
-// Implementação de métodos para a enumeração Expr
-impl Expr {
-    // Método que retorna o tipo do nó da árvore de sintaxe abstrata (AST)
-    pub fn kind(&self) -> NodeType {
-        // O match é usado para verificar o tipo de expressão e retornar o tipo correspondente
-        match self {
-            Expr::BinaryExpr(_) => NodeType::BinaryExpr, // Se for uma expressão binária
-            Expr::NullLiteral(_) => NodeType::NullLiteral, // Se for um literal nulo
-            Expr::NumericLiteral(_) => NodeType::NumericLiteral, // Se for um literal numérico
-            Expr::Identifier(_) => NodeType::Identifier, // Se for um identificador
-            Expr::VarDeclaration(_) => NodeType::VarDeclaration, // Se for uma declaração de variável
-            Expr::AssignmentExpr(_) => NodeType::AssignmentExpr, // Se for uma expressão de atribuição
-            Expr::ObjectLiteral(_) => NodeType::ObjectLiteral,   // Se for um literal de objeto
-            Expr::MemberExpr(_) => NodeType::MemberExpr,         // Se for uma expressão de membro
-            Expr::CallExpr(_) => NodeType::CallExpr,             // Se for uma chamada de função
-            Expr::FunctionDeclaration(_) => NodeType::FunctionDeclaration, // Se for uma declaração de função
-            Expr::StringLiteral(_) => NodeType::StringLiteral, // Se for um literal de string
-            Expr::ImportStmt(_) => NodeType::ImportStmt, // Se for uma declaração de importação
-            Expr::ExportStmt(_) => NodeType::ExportStmt, // Se for uma declaração de exportação
-            Expr::IfStmt(_) => NodeType::IfStmt, // Se for uma declaração de condicional 'if'
-            Expr::TernaryExpr(_) => NodeType::TernaryExpr, // Se for uma expressão ternária
-            Expr::BlockExpr(_) => NodeType::BlockExpr, // Se for uma expressão de bloco
-            Expr::AsmStmt(_) => NodeType::AsmStmt, // Se for um statement de assembly
-            Expr::MovStmt(_) => NodeType::MovStmt, // Se for um statement de mov em assembly
-            Expr::ArrayExpr(_) => NodeType::ArrayExpr, // Se for um array
-            Expr::ArrayAccess(_) => NodeType::ArrayAccess, // Se for um array access
-            Expr::UndefinedLiteral(_) => NodeType::UndefinedLiteral, // Se for undefined
-            Expr::BreakExpr(_) => NodeType::BreakExpr, // Se for um break
-            Expr::LoopStmt(_) => NodeType::LoopStmt, // Se for um loop statement
-            Expr::ForStmt(_) => NodeType::ForStmt, // Se for um for statement
-            Expr::LogicalNotExpr(_) => NodeType::LogicalNotExpr, // Se for uma expressão como !x
-            Expr::UnaryMinusExpr(_) => NodeType::UnaryMinusExpr, // Se for uma expressão como -x
-            Expr::PreIncrementExpr(_) => NodeType::PreIncrementExpr, // Se for uma expressão como ++x
-            Expr::PostIncrementExpr(_) => NodeType::PostIncrementExpr, // Se for uma expressão como x++
-            Expr::PreDecrementExpr(_) => NodeType::PreDecrementExpr, // Se for uma expressão como --x
-            Expr::PostDecrementExpr(_) => NodeType::PostDecrementExpr, // Se for uma expressão como x--
-            Expr::TrueLiteral(_) => NodeType::TrueLiteral,             // Se for true
-            Expr::FalseLiteral(_) => NodeType::FalseLiteral,           // Se for false
-            Expr::UnitDeclaration(_) => NodeType::UnitDeclaration, // Se for uma declaração de unit
-            Expr::UnitVarDeclaration(_) => NodeType::UnitVarDeclaration, // Se for uma declaração de variável dentro de uma unit
-            Expr::UnitFunctionDeclaration(_) => NodeType::UnitFunctionDeclaration, // Se for uma declaração de função dentro de uma unit
-        }
-    }
-}
 
 pub struct Parser {
     tokens: Vec<Token>, // Um vetor de tokens que representa a entrada do parser
@@ -96,62 +52,75 @@ impl Parser {
     }
 
     // Método para analisar o tipo de dado
-    fn parse_data_type(&mut self) -> String {
-        let mut data_type: String = String::new();
-
+    fn parse_data_type(&mut self) -> Datatype {
         // Match para determinar o tipo de token atual
-        match self.at().token_type {
+        let data_type: Datatype = match self.at().token_type {
             // Se o token atual for UndefinedType, Text, Integer, Decimal ou Bool
-            TokenType::UndefinedType
-            | TokenType::Text
-            | TokenType::Integer
-            | TokenType::Decimal
-            | TokenType::Bool => {
-                data_type.push_str(&self.eat().value); // Consome o token e adiciona seu valor à string
+            TokenType::UndefinedType => {
+                self.eat();
+                Datatype::Undefined
             }
-            // Se o token atual for um Array
-            TokenType::Array | TokenType::Object => {
-                data_type.push_str(&self.eat().value); // Consome o token e adiciona seu valor à string
+            TokenType::Text => {
+                self.eat();
+                Datatype::String
+            }
+            TokenType::Integer => {
+                self.eat();
+                Datatype::Integer
+            }
+            TokenType::Decimal => {
+                self.eat();
+                Datatype::Decimal
+            }
+            TokenType::Bool => {
+                self.eat();
+                Datatype::Boolean
+            }
+            TokenType::Object => {
+                self.eat();
                 self.expect(TokenType::LessThan, "\"<\" Expected."); // Verifica se o próximo token é "<"
 
                 // Parsear o tipo interno recursivamente
-                data_type.push('<');
-                data_type.push_str(&self.parse_data_type());
-
-                while self.at().token_type == TokenType::Pipe {
-                    data_type.push('|');
-                    self.eat();
-                    data_type.push_str(&self.parse_data_type());
-                }
-
+                let dt: Datatype = self.parse_data_type();
                 self.expect(TokenType::GreaterThan, "\">\" Expected."); // Verifica se o próximo token é ">"
-                data_type.push('>');
+                Datatype::Object(Box::new(dt))
             }
-            // Se o token atual for "<", indicando um tipo de dado composto
-            TokenType::LessThan => {
-                self.eat(); // Consome o token "<"
-                data_type.push('<');
-                data_type.push_str(&self.parse_data_type());
+            TokenType::Array => {
+                self.eat();
+                self.expect(TokenType::LessThan, "\"<\" Expected."); // Verifica se o próximo token é "<"
 
-                while self.at().token_type == TokenType::Pipe {
-                    data_type.push('|');
-                    self.eat();
-                    data_type.push_str(&self.parse_data_type());
-                }
-
+                // Parsear o tipo interno recursivamente
+                let dt: Datatype = self.parse_data_type();
                 self.expect(TokenType::GreaterThan, "\">\" Expected."); // Verifica se o próximo token é ">"
-                data_type.push('>');
+                Datatype::Array(Box::new(dt))
+            }
+            TokenType::OParen => {
+                self.eat();
+                let mut types: Vec<Box<Datatype>> = Vec::new();
+                types.push(Box::new(self.parse_data_type()));
+
+                while self.at().token_type == TokenType::Comma {
+                    self.eat();
+                    types.push(Box::new(self.parse_data_type()));
+                }
+                self.expect(TokenType::CParen, "\")\" Expected.");
+                if types.len() == 1 {
+                    return Datatype::Tuple(types[0].clone());
+                } else {
+                    return Datatype::Tuple(Box::new(Datatype::_Multitype(types)));
+                }
             }
             // Se o token atual não corresponder a nenhum tipo esperado
             _ => {
                 self.error(
-                    "Expected one of primitive types: Text, Integer, Decimal, Bool, Object<T>, Array<T> or _.",
+                    "Expected one of primitive types: text, integer, decimal, boolean, Object<T>, Array<T> or _.",
                 );
                 // Gera um erro indicando o tipo esperado
+                Datatype::_NOTYPE
             }
-        }
+        };
 
-        data_type // Retorna a string com o tipo de dado completo
+        data_type
     }
 
     // Método para esperar um tipo específico de token
@@ -220,8 +189,8 @@ impl Parser {
         }; // Inicializa a estrutura do programa na AST
 
         // Loop para analisar cada token e construir a AST
-        while self.not_eof() {
-            program.body.push(self.parse_stmt()); // Adiciona o nó de declaração à AST do programa
+        while self.at().token_type != TokenType::Eof {
+            program.body.push(self.parse_stmt()); // Analisa e adiciona a instrução ao vetor de corpo
         }
 
         program // Retorna a AST do programa
@@ -245,6 +214,8 @@ impl Parser {
             TokenType::Loop => self.parse_loop_stmt(),
             // Se o token atual for um for, analisa o for statement
             TokenType::For => self.parse_for_stmt(),
+            // Se o token atual for um while, analisa o while statement
+            TokenType::While => self.parse_while_stmt(),
             // Se o token atual for uma unit, analisa a unit
             TokenType::Unit => self.parse_unit(),
             // Se o token atual for private ou public, analisa um statement unit
@@ -252,31 +223,63 @@ impl Parser {
             // Analisa declaração de variaveis simples, tipadas ou não
             TokenType::Val => self.parse_val_var_declaration(),
             TokenType::Label => {
+                let mut column: (usize, usize) = self.at().column;
+                let mut position: (usize, usize) = self.at().position;
+                let lineno: usize = self.at().lineno;
+
+                let expr: Expr = self.parse_function_declaration();
+
+                column.1 = self.at().column.1 - 1;
+                position.1 = self.at().position.1 - 1;
+
                 Stmt {
                     kind: NodeType::FunctionDeclaration,
-                    expr: Some(self.parse_function_declaration()), // Analisa a declaração da função
+                    expr: Some(expr), // Analisa a declaração da função
                     return_stmt: None,
+                    column,
+                    position,
+                    lineno,
                 }
             }
             // Se o token atual for Resb, Resw, Resd, ou Resq, analisa uma declaração de variável
             TokenType::Resb | TokenType::Resw | TokenType::Resd | TokenType::Resq => {
+                let mut column: (usize, usize) = self.at().column;
+                let mut position: (usize, usize) = self.at().position;
+                let lineno: usize = self.at().lineno;
+
                 let data_size: String = self.eat().value; // Obtém o tamanho dos dados
 
-                let mut size: Option<String> = Some("1".to_string());
+                let mut _size: Option<String> = Some("1".to_string());
                 // Se houver colchetes, obtém o tamanho especificado
                 if self.at().token_type == TokenType::OBracket {
-                    size = Some(format!(
+                    _size = Some(format!(
                         "{}[{}]",
                         data_size,
                         self.expect(TokenType::Number, "Integer Expected.").value
                     ));
                     self.expect(TokenType::CBracket, "\"]\" Expected.");
                 }
-                let data_type: String = self.parse_data_type(); // Analisa o tipo de dado
+                let identifer: Option<String> = Some(self.eat().value);
+
+                self.expect(TokenType::Colon, "\":\" Expected.");
+
+                let data_type: Datatype = self.parse_data_type(); // Analisa o tipo de dado
+
+                let stmt_expr = self.parse_var_declaration(
+                    data_size, data_type, true, column, position, lineno, identifer,
+                ); // Analisa a declaração da variável
+
+                // Atualiza a coluna e a posição antes de retornar o Stmt
+                column.1 = self.at().column.1 - 1;
+                position.1 = self.at().position.1 - 1;
+
                 Stmt {
                     kind: NodeType::VarDeclaration,
-                    expr: Some(self.parse_var_declaration(size.unwrap(), data_type, false)), // Analisa a declaração da variável
+                    expr: Some(stmt_expr),
                     return_stmt: None,
+                    column,
+                    position,
+                    lineno,
                 }
             }
             // Se o token atual for Auto, Byte, Word, Dword, ou Qword, analisa uma declaração de variável
@@ -285,6 +288,10 @@ impl Parser {
             | TokenType::Word
             | TokenType::Dword
             | TokenType::Qword => {
+                let mut column: (usize, usize) = self.at().column;
+                let mut position: (usize, usize) = self.at().position;
+                let lineno: usize = self.at().lineno;
+
                 let data_size: Token = self.eat(); // Obtém o tamanho dos dados
 
                 // Verifica se é uma declaração de variável automática que não pode ter colchetes
@@ -294,26 +301,62 @@ impl Parser {
                     self.error("Automatic size cannot have brackets.");
                 }
 
-                let tipo: String = self.parse_data_type(); // Analisa o tipo de dado
+                let identifier: Option<String> = Some(self.eat().value);
+
+                self.expect(TokenType::Colon, "\":\" Expected.");
+
+                let data_type: Datatype = self.parse_data_type(); // Analisa o tipo de dado
+
+                let stmt_expr = self.parse_var_declaration(
+                    data_size.value,
+                    data_type,
+                    true,
+                    column,
+                    position,
+                    lineno,
+                    identifier,
+                ); // Analisa a declaração da variável
+
+                // Atualiza a coluna e a posição antes de retornar o Stmt
+                column.1 = self.at().column.1 - 1;
+                position.1 = self.at().position.1 - 1;
 
                 Stmt {
                     kind: NodeType::VarDeclaration,
-                    expr: Some(self.parse_var_declaration(data_size.value, tipo, true)), // Analisa a declaração da variável
+                    expr: Some(stmt_expr),
                     return_stmt: None,
+                    column,
+                    position,
+                    lineno,
                 }
             }
             // Se o token atual for Return, analisa uma declaração de retorno
             TokenType::Return => {
+                let mut column: (usize, usize) = self.at().column;
+                let mut position: (usize, usize) = self.at().position;
+                let lineno: usize = self.at().lineno;
+
                 let return_expr: ReturnStmt = self.parse_return_stmt(); // Analisa a expressão de retorno
+
+                column.1 = self.at().column.1 - 1;
+                position.1 = self.at().position.1 - 1;
+
                 Stmt {
                     kind: NodeType::Stmt,
                     expr: None,
                     return_stmt: Some(return_expr),
+                    column,
+                    position,
+                    lineno,
                 }
             }
 
             // Se o token atual for Identifier, String, ou Number, analisa uma expressão ou chamada de função
             TokenType::Identifier | TokenType::String | TokenType::Number => {
+                let mut column: (usize, usize) = self.at().column;
+                let mut position: (usize, usize) = self.at().position;
+                let lineno: usize = self.at().lineno;
+
                 // Verifica se o próximo token não é um dos tokens que indicam o final da expressão
                 if !matches!(
                     self.next().token_type,
@@ -321,25 +364,49 @@ impl Parser {
                         | TokenType::Attribution
                         | TokenType::Colon
                         | TokenType::OBracket
-                        | TokenType::Eof
+                        | TokenType::BitwiseAnd
+                        | TokenType::BitwiseOr
+                        | TokenType::BitwiseXor
+                        | TokenType::ShiftLeft
+                        | TokenType::ShiftRight
+                        | TokenType::Plus
+                        | TokenType::Power
+                        | TokenType::Minus
+                        | TokenType::Mod
+                        | TokenType::Mul
+                        | TokenType::Div
                 ) {
                     // Analisa se o retorno é um member expression ou função
                     if self.next().token_type == TokenType::Dot
                         || self.next().token_type == TokenType::OParen
+                        || self.next().token_type == TokenType::CBrace
                     {
                         let expr: Option<Expr> = Some(self.parse_call_member_expr());
+
+                        column.1 = self.at().column.1 - 1;
+                        position.1 = self.at().position.1 - 1;
+
                         let return_expr: ReturnStmt = ReturnStmt {
                             kind: NodeType::ReturnStmt,
                             argument: expr.clone(),
+                            column,
+                            position,
+                            lineno,
                         };
 
                         // Se conter um ";" faz o parsing como call expr normal
                         if self.at().token_type == TokenType::Semicolon {
                             self.eat();
+                            column.1 = self.at().column.1 - 1;
+                            position.1 = self.at().position.1 - 1;
+
                             return Stmt {
                                 kind: NodeType::CallExpr,
                                 expr,
                                 return_stmt: None,
+                                column,
+                                position,
+                                lineno,
                             };
                         }
 
@@ -348,54 +415,88 @@ impl Parser {
                             kind: NodeType::Stmt,
                             expr: None,
                             return_stmt: Some(return_expr),
+                            column,
+                            position,
+                            lineno,
                         }
                     } else {
                         // Se não for um member expr, continua
                         let expr: Expr = self.parse_expr(); // Analisa a expressão
+
+                        column.1 = self.at().column.1 - 1;
+                        position.1 = self.at().position.1 - 1;
+
                         Stmt {
                             kind: expr.kind(),
                             expr: Some(expr),
                             return_stmt: None,
+                            column,
+                            position,
+                            lineno,
                         }
                     }
                 } else {
-                    // Placeholder para a variável expr.
+                    let mut column: (usize, usize) = self.at().column;
+                    let mut position: (usize, usize) = self.at().position;
+                    let mut column_var: (usize, usize) = self.at().column;
+                    let mut position_var: (usize, usize) = self.at().position;
+                    let lineno: usize = self.at().lineno;
+                    // Placeholder inicial para a variável expr.
                     let mut expr: Expr = Expr::NullLiteral(NullLiteral {
                         kind: NodeType::NullLiteral,
-                        value: "Null",
+                        value: "null",
+                        column,
+                        position,
+                        lineno,
                     });
 
-                    // Loop para permitir chaining de acessos a array
                     loop {
                         match self.next().token_type {
+                            TokenType::BitwiseAnd
+                            | TokenType::BitwiseOr
+                            | TokenType::BitwiseXor
+                            | TokenType::ShiftLeft
+                            | TokenType::ShiftRight
+                            | TokenType::Plus
+                            | TokenType::Power
+                            | TokenType::Minus
+                            | TokenType::Mod
+                            | TokenType::Mul
+                            | TokenType::Div => {
+                                expr = self.parse_bitwise_expr();
+                            }
                             TokenType::Attribution => {
                                 expr = self.parse_assignment_expr();
                             }
                             TokenType::OParen => {
-                                expr = self.parse_expr(); // Analisa a expressão
-                                let args: Vec<Box<Expr>> = self.parse_arguments(); // Analisa os argumentos da chamada de função
+                                expr = self.parse_expr();
+                                let args: Vec<Box<Expr>> = self.parse_arguments();
+
+                                column.1 = self.at().column.1 - 1;
+                                position.1 = self.at().position.1 - 1;
+
                                 expr = Expr::CallExpr(CallExpr {
                                     kind: NodeType::CallExpr,
                                     caller: Box::new(expr),
                                     args,
+                                    column,
+                                    position,
+                                    lineno,
                                 });
                             }
                             TokenType::OBracket => {
-                                expr = self.parse_array_access_expr(); // Analisa a expressão de acesso a índice de array
+                                expr = self.parse_primary_expr();
+                                expr = self.parse_array_access_expr(expr);
                             }
-
-                            TokenType::Semicolon => {
-                                self.error("\";\" Unexpected.");
-                                self.eat();
-                                break;
-                            }
-
                             TokenType::Colon => {
                                 let identifier: String = self.eat().value;
-                                self.eat(); // Consome o token de colon
-                                let data_type: String = self.parse_data_type();
+                                self.eat();
+                                let data_type: Datatype = self.parse_data_type();
                                 if self.at().token_type == TokenType::Semicolon {
                                     self.eat();
+
+                                    column.1 = self.at().column.1 - 1;
+                                    position.1 = self.at().position.1 - 1;
 
                                     return Stmt {
                                         kind: NodeType::VarDeclaration,
@@ -404,20 +505,28 @@ impl Parser {
                                             constant: true,
                                             data_size: "auto".to_string(),
                                             data_type,
-                                            identifier,
-                                            value: Box::from(Expr::UndefinedLiteral(
+                                            identifier: Some(identifier),
+                                            value: Box::new(Expr::UndefinedLiteral(
                                                 UndefinedLiteral {
                                                     kind: NodeType::UndefinedLiteral,
                                                     value: "undefined",
+                                                    column: self.at().column,
+                                                    position: self.at().position,
+                                                    lineno,
                                                 },
                                             )),
+                                            column,
+                                            position,
+                                            lineno,
                                         })),
                                         return_stmt: None,
+                                        column,
+                                        position,
+                                        lineno,
                                     };
                                 } else {
                                     self.expect(TokenType::Attribution, "\"=\" Expected.");
 
-                                    // Parseia a expressão de valor
                                     let value: Box<Expr>;
 
                                     match self.at().token_type {
@@ -425,14 +534,16 @@ impl Parser {
                                             value = Box::new(self.parse_array_expr());
                                         }
                                         TokenType::OBrace => {
-                                            value = Box::new(self.parse_object_expr())
+                                            value = Box::new(self.parse_object_expr());
                                         }
                                         _ => {
                                             value = Box::new(*self.parse_ternary_expr());
                                         }
                                     }
 
-                                    // Espera pelo ponto e vírgula ";"
+                                    column_var.1 = self.at().column.1 - 1;
+                                    position_var.1 = self.at().position.1 - 1;
+
                                     self.expect(TokenType::Semicolon, "\";\" Expected");
 
                                     return Stmt {
@@ -442,44 +553,121 @@ impl Parser {
                                             constant: true,
                                             data_size: "auto".to_string(),
                                             data_type,
-                                            identifier,
+                                            identifier: Some(identifier),
                                             value,
+                                            column: column_var,
+                                            position: position_var,
+                                            lineno,
                                         })),
                                         return_stmt: None,
+                                        column,
+                                        position,
+                                        lineno,
                                     };
                                 }
                             }
 
+                            // Outros casos possíveis
                             _ => break,
                         }
                     }
+
+                    if self.next().token_type == TokenType::Semicolon {
+                        self.eat();
+                        self.eat();
+                    }
+
+                    column.1 = self.at().column.1 - 1;
+                    position.1 = self.at().position.1 - 1;
+
                     Stmt {
                         kind: expr.kind(),
                         expr: Some(expr),
                         return_stmt: None,
+                        column,
+                        position,
+                        lineno,
                     }
                 }
             }
 
             // Outros casos para outros tipos de tokens...
             _ => {
+                let mut column: (usize, usize) = self.at().column;
+                let mut position: (usize, usize) = self.at().position;
+                let lineno: usize = self.at().lineno;
+
                 let expr: Expr = self.parse_expr(); // Analisa a expressão
+                column.1 = self.at().column.1 - 1;
+                position.1 = self.at().position.1 - 1;
+
                 Stmt {
                     kind: expr.kind(),
                     expr: Some(expr),
                     return_stmt: None,
+                    column,
+                    position,
+                    lineno,
                 }
             }
         }
     }
 
-    fn parse_val_var_declaration(&mut self) -> Stmt {
+    fn parse_while_stmt(&mut self) -> Stmt {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+        // Consome o token de while
         self.eat();
+
+        let condition: Expr = self.parse_logical_expr();
+        let mut body: Vec<Stmt> = Vec::new();
+
+        self.expect(TokenType::OBrace, "\"{\" Expected.");
+        while self.at().token_type != TokenType::CBrace && self.at().token_type != TokenType::Eof {
+            body.push(self.parse_stmt());
+        }
+
+        self.expect(TokenType::CBrace, "\"}\" Expected.");
+
+        column.1 = self.at().column.1 - 1;
+        position.1 = self.at().position.1 - 1;
+
+        Stmt {
+            kind: NodeType::WhileStmt,
+            expr: Some(Expr::WhileStmt(Box::new(WhileStmt {
+                kind: NodeType::WhileStmt,
+                condition,
+                body,
+                column,
+                position,
+                lineno,
+            }))),
+            return_stmt: None,
+            column,
+            position,
+            lineno,
+        }
+    }
+
+    fn parse_val_var_declaration(&mut self) -> Stmt {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let mut column_val: (usize, usize) = self.at().column;
+        let mut position_val: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
+        self.eat();
+        println!("{}", self.at().value);
         let identifier: String = self.eat().value;
 
-        // faz parsing de expressões como "val identifier;"
+        column_val.1 = self.at().column.1 - 1;
+        position_val.1 = self.at().position.1 - 1;
+
         if self.at().token_type == TokenType::Semicolon {
             self.eat();
+            column.1 = self.at().column.1 - 1;
+            position.1 = self.at().position.1 - 1;
 
             return Stmt {
                 kind: NodeType::VarDeclaration,
@@ -487,14 +675,23 @@ impl Parser {
                     kind: NodeType::VarDeclaration,
                     constant: false,
                     data_size: "auto".to_string(),
-                    data_type: "undefined".to_string(),
-                    identifier,
+                    data_type: Datatype::Undefined,
+                    identifier: Some(identifier),
                     value: Box::from(Expr::UndefinedLiteral(UndefinedLiteral {
                         kind: NodeType::UndefinedLiteral,
                         value: "undefined",
+                        column: self.at().column,
+                        position: self.at().position,
+                        lineno,
                     })),
+                    column,
+                    position,
+                    lineno,
                 })),
                 return_stmt: None,
+                column,
+                position,
+                lineno,
             };
         }
 
@@ -502,9 +699,14 @@ impl Parser {
         if self.at().token_type == TokenType::Colon {
             self.eat();
 
-            let data_type: String = self.parse_data_type();
+            let data_type: Datatype = self.parse_data_type();
+            column_val.1 = self.at().column.1 - 1;
+            position_val.1 = self.at().position.1 - 1;
+
             if self.at().token_type == TokenType::Semicolon {
                 self.eat();
+                column.1 = self.at().column.1 - 1;
+                position.1 = self.at().position.1 - 1;
 
                 return Stmt {
                     kind: NodeType::VarDeclaration,
@@ -513,13 +715,22 @@ impl Parser {
                         constant: false,
                         data_size: "auto".to_string(),
                         data_type,
-                        identifier,
+                        identifier: Some(identifier),
                         value: Box::from(Expr::UndefinedLiteral(UndefinedLiteral {
                             kind: NodeType::UndefinedLiteral,
                             value: "undefined",
+                            column: self.at().column,
+                            position: self.at().position,
+                            lineno,
                         })),
+                        column: column_val,
+                        position: position_val,
+                        lineno,
                     })),
                     return_stmt: None,
+                    column,
+                    position,
+                    lineno,
                 };
             } else {
                 self.expect(TokenType::Attribution, "\"=\" Expected.");
@@ -538,8 +749,13 @@ impl Parser {
                     }
                 }
 
+                column_val.1 = self.at().column.1 - 1;
+                position_val.1 = self.at().position.1 - 1;
                 // Espera pelo ponto e vírgula ";"
                 self.expect(TokenType::Semicolon, "\";\" Expected");
+
+                column.1 = self.at().column.1 - 1;
+                position.1 = self.at().position.1 - 1;
 
                 return Stmt {
                     kind: NodeType::VarDeclaration,
@@ -547,11 +763,17 @@ impl Parser {
                         kind: NodeType::VarDeclaration,
                         constant: false,
                         data_size: "auto".to_string(),
-                        data_type: "undefined".to_string(),
-                        identifier,
+                        data_type,
+                        identifier: Some(identifier),
                         value,
+                        column: column_val,
+                        position: position_val,
+                        lineno,
                     })),
                     return_stmt: None,
+                    column,
+                    position,
+                    lineno,
                 };
             }
         } else {
@@ -570,25 +792,40 @@ impl Parser {
                     value = Box::new(*self.parse_ternary_expr());
                 }
             }
-
+            column_val.1 = self.at().column.1 - 1;
+            position_val.1 = self.at().position.1 - 1;
             // Espera pelo ponto e vírgula ";"
             self.expect(TokenType::Semicolon, "\";\" Expected");
+
+            column.1 = self.at().column.1 - 1;
+            position.1 = self.at().position.1 - 1;
+
             return Stmt {
                 kind: NodeType::VarDeclaration,
                 expr: Some(Expr::VarDeclaration(VarDeclaration {
                     kind: NodeType::VarDeclaration,
                     constant: false,
                     data_size: "auto".to_string(),
-                    data_type: "undefined".to_string(),
-                    identifier,
+                    data_type: Datatype::Undefined,
+                    identifier: Some(identifier),
                     value,
+                    column,
+                    position,
+                    lineno,
                 })),
                 return_stmt: None,
+                column,
+                position,
+                lineno,
             };
         }
     }
 
     fn parse_for_stmt(&mut self) -> Stmt {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
         self.eat(); // consome o token de for
 
         // Espera o token de "(" para o início dos itens
@@ -609,7 +846,7 @@ impl Parser {
 
         self.expect(TokenType::Colon, "\":\" Expected.");
 
-        let sequence: Box<Expr> = Box::new(self.parse_array_access_expr());
+        let seq: Expr = self.parse_range_expr();
 
         self.expect(TokenType::OBrace, "\"{\" Expected.");
 
@@ -622,19 +859,60 @@ impl Parser {
 
         self.expect(TokenType::CBrace, "\"}\" Expected.");
 
+        column.1 = self.at().column.1 - 1;
+        position.1 = self.at().position.1 - 1;
+
         Stmt {
             kind: NodeType::ForStmt,
             expr: Some(Expr::ForStmt(ForStmt {
                 kind: NodeType::ForStmt,
+                sequence: Box::new(seq),
                 items,
-                sequence,
                 body,
+                column,
+                position,
+                lineno,
             })),
             return_stmt: None,
+            column,
+            position,
+            lineno,
         }
     }
 
+    fn parse_range_expr(&mut self) -> Expr {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
+        let mut expr: Expr = self.parse_expr();
+
+        if self.at().token_type == TokenType::Range
+            || self.at().token_type == TokenType::RangeInclusive
+        {
+            let range: String = self.eat().value;
+            let end = self.parse_expr();
+
+            column.1 = self.at().column.1 - 1;
+            position.1 = self.at().position.1 - 1;
+            expr = Expr::RangeExpr(Box::new(RangeExpr {
+                kind: NodeType::RangeExpr,
+                start: expr,
+                range,
+                end,
+                column,
+                position,
+                lineno,
+            }))
+        }
+
+        expr
+    }
     fn parse_loop_stmt(&mut self) -> Stmt {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
         self.eat(); // consome o token de loop
         self.expect(TokenType::OBrace, "\"{\" Expected.");
 
@@ -647,28 +925,47 @@ impl Parser {
 
         self.expect(TokenType::CBrace, "\"}\" Expected.");
 
+        column.1 = self.at().column.1 - 1;
+        position.1 = self.at().position.1 - 1;
+
         // Retorna o loop statement
         Stmt {
             kind: NodeType::LoopStmt,
             expr: Some(Expr::LoopStmt(LoopStmt {
                 kind: NodeType::LoopStmt,
                 body,
+                column,
+                position,
+                lineno,
             })),
             return_stmt: None,
+            column,
+            position,
+            lineno,
         }
     }
 
     // Método para analisar uma expressão de acesso a array
-    fn parse_array_access_expr(&mut self) -> Expr {
-        let object_expr: Expr = self.parse_call_member_expr(); // Analisa a expressão do objeto/array
+    fn parse_array_access_expr(&mut self, array: Expr) -> Expr {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let mut column_array: (usize, usize) = self.at().column;
+        let mut position_array: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
 
         // Verifica se há uma abertura de colchete
         if self.at().token_type == TokenType::OBracket {
             self.eat(); // Consome o token de abertura de colchete
+            if self.at().token_type == TokenType::CBracket {
+                self.error("Array index Expected.");
+            }
             let index_expr: Expr = self.parse_expr(); // Analisa a expressão do índice do array
 
             // Verifica se há um fechamento de colchete
             self.expect(TokenType::CBracket, "\"]\" Expected.");
+
+            column_array.1 = self.at().column.1 - 1;
+            position_array.1 = self.at().position.1 - 1;
 
             // Verifica se há uma atribuição após o índice do array
             if self.at().token_type == TokenType::Attribution {
@@ -676,32 +973,50 @@ impl Parser {
                 let value_expr: Expr = self.parse_expr(); // Analisa a expressão do valor atribuído
 
                 self.expect(TokenType::Semicolon, "\";\" Expected.");
+
+                column.1 = self.at().column.1 - 1;
+                position.1 = self.at().position.1 - 1;
+
                 // Constrói uma expressão de atribuição
                 Expr::AssignmentExpr(AssignmentExpr {
                     kind: NodeType::AssignmentExpr,
                     assigne: Box::new(Expr::ArrayAccess(ArrayAccess {
                         kind: NodeType::ArrayAccess,
-                        array: Box::new(object_expr),
+                        array: Box::new(array),
                         index: Box::new(index_expr),
+                        column: column_array,
+                        position: position_array,
+                        lineno,
                     })),
                     value: Box::new(value_expr),
+                    column,
+                    position,
+                    lineno,
                 })
             } else {
                 // Se não houver uma atribuição, retorna apenas a expressão de acesso a array
                 Expr::ArrayAccess(ArrayAccess {
                     kind: NodeType::ArrayAccess,
-                    array: Box::new(object_expr),
+                    array: Box::new(array),
                     index: Box::new(index_expr),
+                    column: column_array,
+                    position: position_array,
+                    lineno,
                 })
             }
         } else {
             // Se não houver abertura de colchete, retorna apenas a expressão do objeto/array
-            object_expr
+            self.parse_call_member_expr()
         }
     }
 
     // Método para analias mov statements
     fn parse_mov_stmt(&mut self) -> Stmt {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let mut column_mov: (usize, usize) = self.at().column;
+        let mut position_mov: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
         self.eat(); // Consome o token de "mov"
 
         self.expect(TokenType::OParen, "\"(\" Expected.");
@@ -715,22 +1030,40 @@ impl Parser {
 
         self.expect(TokenType::CParen, "\")\" Expected.");
 
+        column_mov.1 = self.at().column.1 - 1;
+        position_mov.1 = self.at().position.1 - 1;
+
         self.expect(TokenType::Semicolon, "\";\" Expected.");
 
-        let expr = Some(Expr::MovStmt(MovStmt {
+        column.1 = self.at().column.1 - 1;
+        position.1 = self.at().position.1 - 1;
+
+        let expr: Option<Expr> = Some(Expr::MovStmt(MovStmt {
             kind: NodeType::MovStmt,
             values,
+            column: column_mov,
+            position: position_mov,
+            lineno,
         }));
 
         Stmt {
             kind: NodeType::MovStmt,
             expr,
             return_stmt: None,
+            column,
+            position,
+            lineno,
         }
     }
 
     // Método para injeção de código assembly arbitrário
     fn parse_asm_stmt(&mut self) -> Stmt {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let mut column_asm: (usize, usize) = self.at().column;
+        let mut position_asm: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
         let mut asm_code: Vec<Expr> = Vec::new();
 
         self.eat();
@@ -750,15 +1083,28 @@ impl Parser {
         }
 
         self.expect(TokenType::CParen, "\")\" Expected.");
+
+        column_asm.1 = self.at().column.1 - 1;
+        position_asm.1 = self.at().position.1 - 1;
+
         self.expect(TokenType::Semicolon, "\";\" Expected.");
+
+        column.1 = self.at().column.1 - 1;
+        position.1 = self.at().position.1 - 1;
 
         Stmt {
             kind: NodeType::AsmStmt,
             expr: Some(Expr::AsmStmt(AsmStmt {
                 kind: NodeType::AsmStmt,
                 code: asm_code,
+                column: column_asm,
+                position: position_asm,
+                lineno,
             })),
             return_stmt: None,
+            column,
+            position,
+            lineno,
         }
     }
 
@@ -784,6 +1130,10 @@ impl Parser {
 
     // Método para analisar um if statement
     fn parse_if_stmt(&mut self) -> Stmt {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
         self.eat(); // Consome o token "if"
 
         // Analisa a expressão lógica dentro do if
@@ -821,6 +1171,9 @@ impl Parser {
             }
         }
 
+        column.1 = self.at().column.1 - 1;
+        position.1 = self.at().position.1 - 1;
+
         Stmt {
             kind: NodeType::IfStmt,
             expr: Some(Expr::IfStmt(Box::new(IfStmt {
@@ -828,23 +1181,39 @@ impl Parser {
                 test: Box::new(test),
                 consequent,
                 alternate,
+                column,
+                position,
+                lineno,
             }))),
             return_stmt: None,
+            column,
+            position,
+            lineno,
         }
     }
 
     fn parse_logical_expr(&mut self) -> Expr {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
         let mut expr: Expr = self.parse_equality_expr();
 
         while self.at().token_type == TokenType::And || self.at().token_type == TokenType::Or {
             let operator: String = self.eat().value.clone(); // Consome o operador lógico
             let right: Expr = self.parse_equality_expr();
 
+            column.1 = self.at().column.1 - 1;
+            position.1 = self.at().position.1 - 1;
+
             expr = Expr::BinaryExpr(BinaryExpr {
                 kind: NodeType::BinaryExpr,
                 left: Box::new(expr),
                 right: Box::new(right),
                 operator,
+                column,
+                position,
+                lineno,
             });
         }
 
@@ -853,6 +1222,10 @@ impl Parser {
 
     // Método para analisar expressões de igualdade
     fn parse_equality_expr(&mut self) -> Expr {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
         let mut left: Expr = self.parse_relational_expr();
 
         while self.at().token_type == TokenType::Equals
@@ -861,11 +1234,17 @@ impl Parser {
             let operator: String = self.eat().value.clone();
             let right: Expr = self.parse_relational_expr();
 
+            column.1 = self.at().column.1 - 1;
+            position.1 = self.at().position.1 - 1;
+
             left = Expr::BinaryExpr(BinaryExpr {
                 kind: NodeType::BinaryExpr,
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
+                column,
+                position,
+                lineno,
             });
         }
 
@@ -874,6 +1253,10 @@ impl Parser {
 
     // Método para analisar expressões relacionais
     fn parse_relational_expr(&mut self) -> Expr {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
         let mut left: Expr = self.parse_logical_not_expr();
 
         while self.at().token_type == TokenType::LessThan
@@ -884,11 +1267,17 @@ impl Parser {
             let operator: String = self.eat().value.clone();
             let right: Expr = self.parse_logical_not_expr();
 
+            column.1 = self.at().column.1 - 1;
+            position.1 = self.at().position.1 - 1;
+
             left = Expr::BinaryExpr(BinaryExpr {
                 kind: NodeType::BinaryExpr,
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
+                column,
+                position,
+                lineno,
             });
         }
 
@@ -898,11 +1287,22 @@ impl Parser {
     // Método para analisar uma expressão de negação lógica
     fn parse_logical_not_expr(&mut self) -> Expr {
         if self.at().token_type == TokenType::Exclamation {
+            let mut column: (usize, usize) = self.at().column;
+            let mut position: (usize, usize) = self.at().position;
+            let lineno: usize = self.at().lineno;
+
             self.eat(); // Consome o operador de negação lógica
             let operand: Expr = self.parse_logical_not_expr(); // Analisa a expressão unária seguinte
+
+            column.1 = self.at().column.1 - 1;
+            position.1 = self.at().position.1 - 1;
+
             Expr::LogicalNotExpr(LogicalNotExpr {
                 kind: NodeType::LogicalNotExpr,
                 operand: Box::new(operand),
+                column,
+                position,
+                lineno,
             })
         } else {
             self.parse_unary_expr() // Chama a análise da próxima expressão unária
@@ -911,37 +1311,60 @@ impl Parser {
 
     // Método para analisar uma declaração de importação
     fn parse_import_stmt(&mut self) -> Stmt {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let mut column_import: (usize, usize) = self.at().column;
+        let mut position_import: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
         self.eat(); // Consome o token "import"
         self.expect(TokenType::OParen, "\"(\" Expected."); // Verifica e consome o token "("
         self.expect(TokenType::OBracket, "\"[\" Expected."); // Verifica e consome o token "["
 
-        // Aqui ele espera um formato do tipo "path" as identifier, Hashmap<path, Option<identifier>>
-        let mut paths: HashMap<String, Option<String>> = HashMap::new(); // Inicializa um hashmap para armazenar os caminhos de importação e seus aliases opcionais
+        let mut paths: HashMap<StringLiteral, Option<Identifier>> = HashMap::new();
 
-        // Loop para analisar cada caminho de importação e seu alias opcional
-        // Enquanto for diferente de "]"
         while self.at().token_type != TokenType::CBracket {
-            let path = self
-                .expect(TokenType::String, "String Expected.") // Analisa e armazena o caminho de importação
-                .value
-                .clone(); // Espera uma string para o path
+            let column_s: (usize, usize) = self.at().column;
+            let position_s: (usize, usize) = self.at().position;
+            let lineno_s: usize = self.at().lineno;
 
-            // Cria um alias possivelmente nulo para a possibilidade de "path" as Identifier
-            let alias: Option<String> = match self.at().token_type {
-                TokenType::As => {
-                    self.eat(); // Consome o token "as"
-                    Some(
-                        self.expect(TokenType::Identifier, "Identifier Expected.") // Analisa e armazena o alias
-                            .value
-                            .clone(),
-                    )
-                }
-                _ => None, // caso não tenha "as" ele retorna None
+            // Parse `path` as `StringLiteral`
+            let path_value = self
+                .expect(TokenType::String, "String Expected.")
+                .value
+                .clone();
+            let path = StringLiteral {
+                kind: NodeType::StringLiteral,
+                value: path_value,
+                column: column_s,
+                position: position_s,
+                lineno: lineno_s,
             };
 
-            paths.insert(path, alias); // Insere o caminho de importação e seu alias no hashmap
+            let mut alias: Option<Identifier> = None;
 
-            // Se tiver virgula, apenas consome ela e retorna ao loop
+            // Parseia "alias" como "identifier" se existir
+            if self.at().token_type == TokenType::As {
+                self.eat(); // Consome o token "as"
+                let column_i: (usize, usize) = self.at().column;
+                let position_i: (usize, usize) = self.at().position;
+                let lineno_i: usize = self.at().lineno;
+
+                let alias_value = self
+                    .expect(TokenType::Identifier, "Identifier Expected.")
+                    .value
+                    .clone();
+                alias = Some(Identifier {
+                    kind: NodeType::Identifier,
+                    symbol: alias_value,
+                    column: column_i,
+                    position: position_i,
+                    lineno: lineno_i,
+                });
+            }
+
+            paths.insert(path, alias);
+
             if self.at().token_type == TokenType::Comma {
                 self.eat();
             }
@@ -949,21 +1372,37 @@ impl Parser {
 
         self.expect(TokenType::CBracket, "\"]\" Expected."); // Verifica e consome o token "]"
         self.expect(TokenType::CParen, "\")\" Expected."); // Verifica e consome o token ")"
+        column_import.1 = self.at().column.1 - 1;
+        position_import.1 = self.at().position.1 - 1;
         self.expect(TokenType::Semicolon, "\";\" Expected."); // Verifica e consome o token ";"
 
-        // Retorna uma estrutura Stmt representando a declaração de importação
+        column.1 = self.at().column.1 - 1;
+        position.1 = self.at().position.1 - 1;
+
         Stmt {
             kind: NodeType::ImportStmt,
             expr: Some(Expr::ImportStmt(ImportStmt {
                 kind: NodeType::Stmt,
                 paths,
+                column: column_import,
+                position: position_import,
+                lineno,
             })),
             return_stmt: None,
+            column,
+            position,
+            lineno,
         }
     }
 
     // Método para analisar uma declaração de exportação
     fn parse_export_stmt(&mut self) -> Stmt {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let mut column_export: (usize, usize) = self.at().column;
+        let mut position_export: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
         self.eat(); // Consome o token "export"
         self.expect(TokenType::OParen, "\"(\" Expected."); // Verifica e consome o token "("
         self.expect(TokenType::OBracket, "\"[\" Expected."); // Verifica e consome o token "["
@@ -978,6 +1417,9 @@ impl Parser {
                     .expect(TokenType::Identifier, "Identifier Expected.") // Analisa e armazena o identificador
                     .value
                     .clone(),
+                column: self.at().column,
+                position: self.at().position,
+                lineno: self.at().lineno,
             });
 
             if self.at().token_type == TokenType::Comma {
@@ -987,7 +1429,14 @@ impl Parser {
 
         self.expect(TokenType::CBracket, "\"]\" Expected."); // Verifica e consome o token "]"
         self.expect(TokenType::CParen, "\")\" Expected."); // Verifica e consome o token ")"
+
+        column_export.1 = self.at().column.1 - 1;
+        position_export.1 = self.at().position.1 - 1;
+
         self.expect(TokenType::Semicolon, "\";\" Expected."); // Verifica e consome o token ";"
+
+        column.1 = self.at().column.1 - 1;
+        position.1 = self.at().position.1 - 1;
 
         // Retorna uma estrutura Stmt representando a declaração de exportação
         Stmt {
@@ -995,40 +1444,65 @@ impl Parser {
             expr: Some(Expr::ExportStmt(ExportStmt {
                 kind: NodeType::Stmt,
                 identifiers,
+                column: column_export,
+                position: position_export,
+                lineno,
             })),
             return_stmt: None,
+            column,
+            position,
+            lineno,
         }
     }
 
     // Método para analisar uma declaração de retorno
     fn parse_return_stmt(&mut self) -> ReturnStmt {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
         self.expect(TokenType::Return, "\"return\" Expected."); // Consome o token "return"
 
         // Usa parse_call_member_expr para analisar a expressão de retorno completa
-        let expr = self.parse_call_member_expr();
+        let expr: Expr = self.parse_call_member_expr();
 
         if self.tokens.get(self.index - 1).unwrap().token_type == TokenType::Semicolon {
+            column.1 = self.at().column.1 - 2;
+            position.1 = self.at().position.1 - 2;
             return ReturnStmt {
                 kind: NodeType::ReturnStmt,
                 argument: Some(expr), // Retorna a expressão analisada
+                column,
+                position,
+                lineno,
             };
         }
         self.expect(TokenType::Semicolon, "\";\" Expected."); // Verifica e consome o ponto e vírgula
 
+        column.1 = self.at().column.1 - 1;
+        position.1 = self.at().position.1 - 1;
+
         ReturnStmt {
             kind: NodeType::ReturnStmt,
             argument: Some(expr), // Retorna a expressão analisada
+            column,
+            position,
+            lineno,
         }
     }
 
     // Método para analisar a declaração de uma função
     fn parse_function_declaration(&mut self) -> Expr {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
         self.eat(); // Consome o token "label"
         let name: String = self
             .expect(TokenType::Identifier, "Function name expected") // Analisa e armazena o nome da função
             .value;
         //oi1
-        let mut parameters: Vec<(String, String, String)> = Vec::new(); // Inicializa um vetor para armazenar os parâmetros da função
+        let mut parameters: Vec<(String, Datatype, String)> = Vec::new(); // Inicializa um vetor para armazenar os parâmetros da função
 
         // Verifica se há parênteses para delimitar os parâmetros
         if self.at().token_type == TokenType::OParen {
@@ -1045,8 +1519,8 @@ impl Parser {
                         .expect(TokenType::Identifier, "Parameter name expected") // Analisa e armazena o nome do parâmetro
                         .value;
 
-                    let mut size: String = "undefined".to_string(); // Obtém o tamanho do parâmetro
-                    let mut data_type: String = "undefined".to_string(); // Analisa e obtém o tipo de dados do parâmetro
+                    let mut size: String = "auto".to_string(); // Obtém o tamanho do parâmetro
+                    let mut data_type: Datatype = Datatype::Undefined; // Analisa e obtém o tipo de dados do parâmetro
                     if self.at().token_type == TokenType::Colon {
                         self.eat();
                         match self.at().token_type {
@@ -1054,7 +1528,10 @@ impl Parser {
                             | TokenType::Byte
                             | TokenType::Word
                             | TokenType::Dword
-                            | TokenType::Qword => size = self.eat().value,
+                            | TokenType::Qword => {
+                                size = self.eat().value;
+                                data_type = self.parse_data_type()
+                            }
                             TokenType::UndefinedType
                             | TokenType::Text
                             | TokenType::Integer
@@ -1067,18 +1544,6 @@ impl Parser {
                             _ => {
                                 self.error("Unexpected token ");
                             }
-                        }
-
-                        match self.at().token_type {
-                            TokenType::UndefinedType
-                            | TokenType::Text
-                            | TokenType::Integer
-                            | TokenType::Decimal
-                            | TokenType::Array
-                            | TokenType::Object => {
-                                data_type = self.parse_data_type();
-                            }
-                            _ => (),
                         }
                     }
 
@@ -1095,8 +1560,8 @@ impl Parser {
             }
         }
 
-        let mut return_size: String = "undefined".to_string();
-        let mut return_type: String = "undefined".to_string();
+        let mut return_size: String = "auto".to_string();
+        let mut return_type: Datatype = Datatype::Undefined;
 
         if self.at().token_type == TokenType::Colon {
             self.eat();
@@ -1146,6 +1611,9 @@ impl Parser {
 
         self.expect(TokenType::CBrace, "\"}\" Expected."); // Verifica e consome o token "}"
 
+        column.1 = self.at().column.1 - 1;
+        position.1 = self.at().position.1 - 1;
+
         // Retorna uma estrutura Expr representando a declaração da função
         Expr::FunctionDeclaration(Box::new(FunctionDeclaration {
             kind: NodeType::FunctionDeclaration,
@@ -1154,14 +1622,25 @@ impl Parser {
             name,
             parameters,
             body,
+            column,
+            position,
+            lineno,
         }))
     }
 
     fn parse_unit_statement_declaration(&mut self) -> Stmt {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
         let access_modifier: String = match self.at().token_type {
             TokenType::Public | TokenType::Private => self.eat().value.clone(),
             _ => "private".to_string(),
         };
+
+        // Define as novas posições após análise
+        column.1 = self.at().column.1;
+        position.1 = self.at().position.1;
 
         if self.at().token_type == TokenType::Label {
             return Stmt {
@@ -1171,17 +1650,41 @@ impl Parser {
                         kind: NodeType::UnitFunctionDeclaration,
                         access_modifier,
                         function: self.parse_function_declaration(),
+                        column,
+                        position,
+                        lineno,
                     },
                 ))),
                 return_stmt: None,
+                column,
+                position,
+                lineno,
             };
         }
 
-        self.parse_stmt()
+        Stmt {
+            kind: NodeType::UnitVarDeclaration,
+            expr: Some(Expr::UnitVarDeclaration(Box::new(UnitVarDeclaration {
+                kind: NodeType::UnitVarDeclaration,
+                access_modifier,
+                var: self.parse_stmt(),
+                column,
+                position,
+                lineno,
+            }))),
+            return_stmt: None,
+            column,
+            position,
+            lineno,
+        }
     }
 
     // Método para analisar uma unidade (unit)
     fn parse_unit(&mut self) -> Stmt {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
         self.eat(); // Consome o token "unit"
 
         // Nome da unit
@@ -1217,17 +1720,26 @@ impl Parser {
 
         self.expect(TokenType::CBrace, "\"}\" Expected.");
 
+        column.1 = self.at().column.1 - 1;
+        position.1 = self.at().position.1 - 1;
+
         let expr: Option<Expr> = Some(Expr::UnitDeclaration(Box::new(UnitDeclaration {
             kind: NodeType::UnitDeclaration,
             name,
             super_units,
             body,
+            column,
+            position,
+            lineno,
         })));
 
         Stmt {
             kind: NodeType::UnitDeclaration,
             expr,
             return_stmt: None,
+            column,
+            position,
+            lineno,
         }
     }
 
@@ -1235,15 +1747,23 @@ impl Parser {
     fn parse_var_declaration(
         &mut self,
         data_size: String,
-        data_type: String,
+        data_type: Datatype,
         is_constant: bool,
+        mut column: (usize, usize),
+        mut position: (usize, usize),
+        lineno: usize,
+        mut identifier: Option<String>,
     ) -> Expr {
         // Se a variável é constante
         if is_constant {
             // Pega o identificador da variável
-            let identifier: String = self
-                .expect(TokenType::Identifier, "Identifier Expected.")
-                .value;
+            if identifier.is_none() {
+                identifier = Some(
+                    self.expect(TokenType::Identifier, "Identifier Expected.")
+                        .value,
+                );
+            }
+
             // Espera pelo token de atribuição "="
             self.expect(TokenType::Attribution, "\"=\" Expected.");
 
@@ -1264,7 +1784,10 @@ impl Parser {
             // Espera pelo ponto e vírgula ";"
             self.expect(TokenType::Semicolon, "\";\" Expected");
 
-            // Retorna uma declaração de variável constante
+            column.1 = self.at().column.1 - 1;
+            position.1 = self.at().position.1 - 1;
+
+            // Retorna uma declaração de constante
             Expr::VarDeclaration(VarDeclaration {
                 kind: NodeType::VarDeclaration,
                 constant: is_constant,
@@ -1272,6 +1795,9 @@ impl Parser {
                 data_type,
                 identifier,
                 value,
+                column,
+                position,
+                lineno,
             })
         } else {
             // Pega o identificador da variável
@@ -1297,14 +1823,20 @@ impl Parser {
             // Espera pelo ponto e vírgula ";"
             self.expect(TokenType::Semicolon, "\";\" Expected");
 
+            column.1 = self.at().column.1 - 1;
+            position.1 = self.at().position.1 - 1;
+
             // Retorna uma declaração de variável
             Expr::VarDeclaration(VarDeclaration {
                 kind: NodeType::VarDeclaration,
                 constant: is_constant,
                 data_size,
                 data_type,
-                identifier,
+                identifier: Some(identifier),
                 value,
+                column,
+                position,
+                lineno,
             })
         }
     }
@@ -1315,10 +1847,16 @@ impl Parser {
         if self.at().token_type == TokenType::Identifier
             && self.next().token_type == TokenType::OBracket
         {
-            return Box::new(self.parse_array_access_expr()); // Chamada de parse_array_access_expr sem argumentos
+            let identifier: Expr = self.parse_primary_expr();
+            return Box::new(self.parse_array_access_expr(identifier));
+            // Chamada de parse_array_access_expr sem argumentos
         }
 
-        let condition = self.parse_logical_expr(); // Analisa a condição da expressão ternária
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
+        let condition: Expr = self.parse_logical_expr(); // Analisa a condição da expressão ternária
 
         // Verifica se há um operador ternário "?"
         if self.at().token_type != TokenType::QuestionMark {
@@ -1337,12 +1875,18 @@ impl Parser {
 
         let alternate = self.parse_nested_ternary_expr(); // Analisa a expressão alternativa
 
+        column.1 = self.at().column.1 - 1;
+        position.1 = self.at().position.1 - 1;
+
         // Retorna uma estrutura Box<Expr> representando a expressão ternária
         Box::new(Expr::TernaryExpr(TernaryExpr {
             kind: NodeType::TernaryExpr,
             condition: Box::new(condition),
             consequent,
             alternate,
+            column,
+            position,
+            lineno,
         }))
     }
 
@@ -1355,6 +1899,10 @@ impl Parser {
             self.expect(TokenType::CParen, "\")\" Expected."); // Verifica e consome o token ")"
             expr // Retorna a expressão analisada
         } else if self.at().token_type == TokenType::OBrace {
+            let mut column: (usize, usize) = self.at().column;
+            let mut position: (usize, usize) = self.at().position;
+            let lineno: usize = self.at().lineno;
+
             // Verifica se a expressão está entre chaves
             self.eat(); // Consome o token "{"
             let mut statements: Vec<Stmt> = Vec::new();
@@ -1363,10 +1911,17 @@ impl Parser {
                 statements.push(self.parse_stmt()); // Analisa e adiciona a instrução ao vetor de instruções
             }
             self.expect(TokenType::CBrace, "\"}\" Expected."); // Verifica e consome o token "}"
-                                                               // Retorna uma expressão representando um bloco de instruções
+
+            column.1 = self.at().column.1 - 1;
+            position.1 = self.at().position.1 - 1;
+
+            // Retorna uma expressão representando um bloco de instruções
             Box::new(Expr::BlockExpr(Box::new(BlockExpr {
                 kind: NodeType::BlockExpr,
                 statements,
+                column,
+                position,
+                lineno,
             })))
         } else {
             Box::new(self.parse_expr()) // Retorna a expressão analisada
@@ -1375,70 +1930,143 @@ impl Parser {
 
     // Método para analisar uma expressão unária
     fn parse_unary_expr(&mut self) -> Expr {
-        let expr = match self.at().token_type {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
+        let expr: Expr = match self.at().token_type {
             TokenType::Minus => {
                 self.eat(); // Consome o operador de menos unário
-                let operand = self.parse_unary_expr(); // Analise a expressão unária seguinte
+                let operand: Expr = self.parse_unary_expr(); // Analise a expressão unária seguinte
+
+                column.1 = self.at().column.1 - 1;
+                position.1 = self.at().position.1 - 1;
+
                 Expr::UnaryMinusExpr(UnaryMinusExpr {
                     kind: NodeType::UnaryMinusExpr,
                     operand: Box::new(operand),
+                    column,
+                    position,
+                    lineno,
                 })
             }
             TokenType::Exclamation => {
                 self.eat(); // Consome o operador de negação lógica
-                let operand = self.parse_unary_expr(); // Analise a expressão unária seguinte
+                let operand: Expr = self.parse_unary_expr(); // Analise a expressão unária seguinte
+
+                column.1 = self.at().column.1 - 1;
+                position.1 = self.at().position.1 - 1;
+
                 Expr::LogicalNotExpr(LogicalNotExpr {
                     kind: NodeType::LogicalNotExpr,
                     operand: Box::new(operand),
+                    column,
+                    position,
+                    lineno,
+                })
+            }
+            TokenType::BitwiseNot => {
+                self.eat(); // Consome o operador de bitwise not
+                let operand: Expr = self.parse_unary_expr(); // Analise a expressão unária seguinte
+
+                column.1 = self.at().column.1 - 1;
+                position.1 = self.at().position.1 - 1;
+
+                Expr::UnaryBitwiseNotExpr(UnaryBitwiseNotExpr {
+                    kind: NodeType::UnaryBitwiseNotExpr,
+                    operand: Box::new(operand),
+                    column,
+                    position,
+                    lineno,
                 })
             }
             TokenType::Increment => {
                 self.eat(); // Consome o operador de pré-incremento
-                let operand = self.parse_unary_expr(); // Analise a expressão unária seguinte
+                let operand: Expr = self.parse_unary_expr(); // Analise a expressão unária seguinte
+
+                column.1 = self.at().column.1 - 1;
+                position.1 = self.at().position.1 - 1;
+
                 Expr::PreIncrementExpr(PreIncrementExpr {
                     kind: NodeType::PreIncrementExpr,
                     operand: Box::new(operand),
+                    column,
+                    position,
+                    lineno,
                 })
             }
             TokenType::Decrement => {
                 self.eat(); // Consome o operador de pré-decremento
-                let operand = self.parse_unary_expr(); // Analise a expressão unária seguinte
+                let operand: Expr = self.parse_unary_expr(); // Analise a expressão unária seguinte
+
+                column.1 = self.at().column.1 - 1;
+                position.1 = self.at().position.1 - 1;
+
                 Expr::PreDecrementExpr(PreDecrementExpr {
                     kind: NodeType::PreDecrementExpr,
                     operand: Box::new(operand),
+                    column,
+                    position,
+                    lineno,
                 })
             }
             _ => return self.parse_postfix_expr(), // Analise a expressão primária e depois verifique por pós-fixação
         };
-
-        // Se já não houver um semicolon, ele espera que haja
-        if self.at().token_type != TokenType::Semicolon {
-            self.expect(TokenType::Semicolon, "\";\" Expected.");
-        } else {
-            self.eat();
-        }
 
         expr
     }
 
     /// Método para analisar uma expressão pós-fixada (incremento/decremento após a expressão)
     fn parse_postfix_expr(&mut self) -> Expr {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
+        match self.next().token_type {
+            TokenType::BitwiseAnd
+            | TokenType::BitwiseOr
+            | TokenType::BitwiseXor
+            | TokenType::ShiftLeft
+            | TokenType::ShiftRight
+            | TokenType::Plus
+            | TokenType::Power
+            | TokenType::Minus
+            | TokenType::Mod
+            | TokenType::Mul
+            | TokenType::Div => {
+                return self.parse_bitwise_expr();
+            }
+            _ => (),
+        }
+
         let mut expr: Expr = self.parse_call_member_expr(); // Analise acesso de array
 
         loop {
             match self.at().token_type {
                 TokenType::Increment => {
                     self.eat(); // Consome o operador de pós-incremento
+                    column.1 = self.at().column.1 - 1;
+                    position.1 = self.at().position.1 - 1;
+
                     expr = Expr::PostIncrementExpr(PostIncrementExpr {
                         kind: NodeType::PostIncrementExpr,
                         operand: Box::new(expr),
+                        column,
+                        position,
+                        lineno,
                     });
                 }
                 TokenType::Decrement => {
                     self.eat(); // Consome o operador de pós-decremento
+                    column.1 = self.at().column.1 - 1;
+                    position.1 = self.at().position.1 - 1;
+
                     expr = Expr::PostDecrementExpr(PostDecrementExpr {
                         kind: NodeType::PostDecrementExpr,
                         operand: Box::new(expr),
+                        column,
+                        position,
+                        lineno,
                     });
                 }
                 _ => break, // Sai do loop se não houver mais operadores pós-fixados
@@ -1453,7 +2081,8 @@ impl Parser {
         if self.at().token_type == TokenType::Minus
             || self.at().token_type == TokenType::Increment
             || self.at().token_type == TokenType::Decrement
-            || self.next().token_type == TokenType::Exclamation
+            || self.at().token_type == TokenType::Exclamation
+            || self.at().token_type == TokenType::BitwiseNot
             || self.next().token_type == TokenType::Increment
             || self.next().token_type == TokenType::Decrement
         {
@@ -1465,15 +2094,31 @@ impl Parser {
 
     // Método para analisar uma expressão de atribuição
     fn parse_assignment_expr(&mut self) -> Expr {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
         let mut left: Expr = *self.parse_ternary_expr();
 
         while self.at().token_type == TokenType::Attribution {
             self.eat();
-            let right: Expr = *self.parse_ternary_expr();
+            let right: Expr = match self.at().token_type {
+                TokenType::OBracket => self.parse_array_expr(),
+
+                TokenType::OBrace => self.parse_object_expr(),
+                _ => *self.parse_ternary_expr(),
+            };
+
+            column.1 = self.at().column.1 - 1;
+            position.1 = self.at().position.1 - 1;
+
             left = Expr::AssignmentExpr(AssignmentExpr {
                 kind: NodeType::AssignmentExpr,
                 assigne: Box::new(left),
                 value: Box::new(right),
+                column,
+                position,
+                lineno,
             });
             self.expect(TokenType::Semicolon, "\";\" Expected.");
         }
@@ -1483,6 +2128,9 @@ impl Parser {
 
     // Método para analisar uma expressão de array
     fn parse_array_expr(&mut self) -> Expr {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
         // Verifica se o token é "[", se não for, ele passa para outro parsing
         if self.at().token_type != TokenType::OBracket {
             return self.parse_object_expr();
@@ -1507,10 +2155,15 @@ impl Parser {
         // Espera que haja o fechamento de colchetes
         self.expect(TokenType::CBracket, "\"]\" Expected.");
 
-        //
+        column.1 = self.at().column.1 - 1;
+        position.1 = self.at().position.1 - 1;
+
         Expr::ArrayExpr(ArrayExpr {
             kind: NodeType::ArrayExpr,
             elements: array,
+            column,
+            position,
+            lineno,
         })
     }
 
@@ -1518,8 +2171,12 @@ impl Parser {
     fn parse_object_expr(&mut self) -> Expr {
         // Verifica se o token atual é uma abertura de chave "{"
         if self.at().token_type != TokenType::OBrace {
-            return self.parse_additive_expr();
+            return self.parse_bitwise_expr();
         }
+
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
 
         // Consome a abertura de chave "{"
         self.eat();
@@ -1527,6 +2184,10 @@ impl Parser {
 
         // Loop até encontrar o fechamento de chave "}" ou fim do arquivo
         while self.not_eof() && self.at().token_type != TokenType::CBrace {
+            let mut column_property: (usize, usize) = self.at().column;
+            let mut position_property: (usize, usize) = self.at().position;
+            let lineno_property: usize = self.at().lineno;
+
             // Pega a chave do objeto
             let key: String = self
                 .expect(TokenType::Identifier, "Key Identifier Expected.")
@@ -1538,6 +2199,9 @@ impl Parser {
                 Some(Box::new(Expr::StringLiteral(StringLiteral {
                     kind: NodeType::StringLiteral,
                     value: key.clone(),
+                    column: self.at().column,
+                    position: self.at().position,
+                    lineno: self.at().lineno,
                 })))
             } else {
                 // Espera pelo token de dois pontos ":"
@@ -1546,11 +2210,16 @@ impl Parser {
                 Some(Box::new(self.parse_expr()))
             };
 
+            column_property.1 = self.at().column.1 - 1;
+            position_property.1 = self.at().position.1 - 1;
             // Adiciona a propriedade ao vetor de propriedades
             properties.push(Property {
                 kind: NodeType::Property,
                 key,
                 value,
+                column: column_property,
+                position: position_property,
+                lineno: lineno_property,
             });
 
             // Se o próximo token for uma vírgula ",", consome-a
@@ -1565,28 +2234,78 @@ impl Parser {
 
         // Espera pelo fechamento de chave "}"
         self.expect(TokenType::CBrace, "\"}\" Expected.");
+        column.1 = self.at().column.1 - 1;
+        position.1 = self.at().position.1 - 1;
+
         // Retorna um literal de objeto
         Expr::ObjectLiteral(ObjectLiteral {
             kind: NodeType::ObjectLiteral,
             properties,
+            column,
+            position,
+            lineno,
         })
     }
 
-    // Método para analisar uma expressão aditiva
-    fn parse_additive_expr(&mut self) -> Expr {
-        let mut left: Expr = self.parse_multiplicative_expr(); // Analisa a expressão multiplicativa à esquerda
+    // Método para analisar uma expressão bitwise
+    fn parse_bitwise_expr(&mut self) -> Expr {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
 
-        // Loop para lidar com operadores de adição e subtração
-        while self.at().value == "+" || self.at().value == "-" {
+        let mut left: Expr = self.parse_additive_expr(); // Analisa a expressão aditiva à esquerda
+
+        // Loop para lidar com operadores de bitwise
+        while self.at().token_type == TokenType::BitwiseOr
+            || self.at().token_type == TokenType::BitwiseAnd
+            || self.at().token_type == TokenType::BitwiseXor
+            || self.at().token_type == TokenType::ShiftLeft
+            || self.at().token_type == TokenType::ShiftRight
+        {
             let operator: String = self.eat().value; // Consome o operador
-            let right: Expr = self.parse_multiplicative_expr(); // Analisa a expressão multiplicativa à direita
+            let right: Expr = self.parse_additive_expr(); // Analisa a expressão aditiva à direita
 
+            column.1 = self.at().column.1 - 1;
+            position.1 = self.at().position.1 - 1;
             // Constrói uma expressão binária com o operador e as expressões esquerda e direita
             left = Expr::BinaryExpr(BinaryExpr {
                 kind: NodeType::BinaryExpr,
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
+                column,
+                position,
+                lineno,
+            });
+        }
+
+        left // Retorna a expressão analisada
+    }
+
+    // Método para analisar uma expressão aditiva
+    fn parse_additive_expr(&mut self) -> Expr {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
+        let mut left: Expr = self.parse_multiplicative_expr(); // Analisa a expressão multiplicativa à esquerda
+
+        // Loop para lidar com operadores de adição e subtração
+        while self.at().token_type == TokenType::Plus || self.at().token_type == TokenType::Minus {
+            let operator: String = self.eat().value; // Consome o operador
+            let right: Expr = self.parse_multiplicative_expr(); // Analisa a expressão multiplicativa à direita
+
+            column.1 = self.at().column.1 - 1;
+            position.1 = self.at().position.1 - 1;
+            // Constrói uma expressão binária com o operador e as expressões esquerda e direita
+            left = Expr::BinaryExpr(BinaryExpr {
+                kind: NodeType::BinaryExpr,
+                left: Box::new(left),
+                right: Box::new(right),
+                operator,
+                column,
+                position,
+                lineno,
             });
         }
 
@@ -1595,19 +2314,31 @@ impl Parser {
 
     // Método para analisar uma expressão multiplicativa
     fn parse_multiplicative_expr(&mut self) -> Expr {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
         let mut left: Expr = self.parse_exponential_expr(); // Analisa a expressão exponencial à esquerda
 
         // Loop para lidar com operadores de multiplicação, divisão e módulo
-        while self.at().value == "*" || self.at().value == "/" || self.at().value == "%" {
+        while self.at().token_type == TokenType::Mul
+            || self.at().token_type == TokenType::Div
+            || self.at().token_type == TokenType::Mod
+        {
             let operator: String = self.eat().value; // Consome o operador
             let right: Expr = self.parse_exponential_expr(); // Analisa a expressão exponencial à direita
 
+            column.1 = self.at().column.1 - 1;
+            position.1 = self.at().position.1 - 1;
             // Constrói uma expressão binária com o operador e as expressões esquerda e direita
             left = Expr::BinaryExpr(BinaryExpr {
                 kind: NodeType::BinaryExpr,
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
+                column,
+                position,
+                lineno,
             });
         }
 
@@ -1616,19 +2347,28 @@ impl Parser {
 
     // Método para analisar uma expressão exponencial
     fn parse_exponential_expr(&mut self) -> Expr {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
         let mut left: Expr = self.parse_call_member_expr(); // Analisa a expressão de chamada/membro à esquerda
 
         // Loop para lidar com operadores de exponenciação
-        while self.at().value == "^" {
+        while self.at().token_type == TokenType::Power {
             let operator: String = self.eat().value; // Consome o operador
             let right: Expr = self.parse_call_member_expr(); // Analisa a expressão de chamada/membro à direita
 
+            column.1 = self.at().column.1 - 1;
+            position.1 = self.at().position.1 - 1;
             // Constrói uma expressão binária com o operador e as expressões esquerda e direita
             left = Expr::BinaryExpr(BinaryExpr {
                 kind: NodeType::BinaryExpr,
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
+                column,
+                position,
+                lineno,
             });
         }
 
@@ -1638,27 +2378,40 @@ impl Parser {
     // Método para analisar uma expressão de chamada ou membro
     fn parse_call_member_expr(&mut self) -> Expr {
         let mut expr: Expr = self.parse_primary_expr(); // Começa com uma expressão primária
-
         loop {
             match self.at().token_type {
                 TokenType::Dot => {
+                    let mut column_member: (usize, usize) = self.at().column;
+                    let mut position_member: (usize, usize) = self.at().position;
+                    let lineno: usize = self.at().lineno;
                     self.eat(); // Consome o ponto
+                    let column_identifier: (usize, usize) = self.at().column;
+                    let position_identifier: (usize, usize) = self.at().position;
                     let property: Token =
                         self.expect(TokenType::Identifier, "Identifier Expected.");
+                    column_member.1 = self.at().column.1 - 1; //ovotatupeneiracebolaavepãopauguloso
+                    position_member.1 = self.at().position.1 - 1;
                     expr = Expr::MemberExpr(MemberExpr {
                         kind: NodeType::MemberExpr,
                         object: Box::new(expr),
                         property: Box::new(Expr::Identifier(Identifier {
                             kind: NodeType::Identifier,
                             symbol: property.value,
+                            column: column_identifier,
+                            position: position_identifier,
+                            lineno,
                         })),
+                        column: column_member,
+                        position: position_member,
+                        lineno,
                     });
                 }
                 TokenType::OParen => {
                     expr = self.parse_call_expr(expr); // Analisa a expressão de chamada associada
                 }
+
                 TokenType::OBracket => {
-                    expr = self.parse_array_access_expr(); // Chama a função para analisar a expressão de acesso a array
+                    expr = self.parse_array_access_expr(expr);
                 }
                 _ => break, // Sai do loop se não houver mais operações
             }
@@ -1669,13 +2422,23 @@ impl Parser {
 
     // Método para analisar uma expressão de chamada
     fn parse_call_expr(&mut self, caller: Expr) -> Expr {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+
         self.expect(TokenType::OParen, "\"(\" Expected."); // Espera o token '('
         let args: Vec<Box<Expr>> = self.parse_args(); // Analisa os argumentos da chamada de função
+
+        column.1 = self.at().column.1 - 1;
+        position.1 = self.at().position.1 - 1;
 
         let expr: Expr = Expr::CallExpr(CallExpr {
             kind: NodeType::CallExpr,
             caller: Box::new(caller),
             args,
+            column,
+            position,
+            lineno,
         });
 
         // Verifica se a chamada de função está dentro de uma declaração de função
@@ -1736,91 +2499,177 @@ impl Parser {
 
         args // Retorna a lista de argumentos analisada
     }
+    //como?
 
     // Método para analisar uma expressão primária
     fn parse_primary_expr(&mut self) -> Expr {
         // Verifica o tipo de token atual
         match self.at().token_type {
             TokenType::Identifier => {
+                let column: (usize, usize) = self.at().column;
+                let position: (usize, usize) = self.at().position;
+                let lineno: usize = self.at().lineno;
                 // Se for um identificador, cria uma expressão de identificador
-                Expr::Identifier(Identifier {
+                return Expr::Identifier(Identifier {
                     kind: NodeType::Identifier,
                     symbol: self.eat().value, // Consome o token e obtém o valor do identificador
-                })
+                    column,
+                    position,
+                    lineno,
+                });
             }
             TokenType::Number => {
+                let column: (usize, usize) = self.at().column;
+                let position: (usize, usize) = self.at().position;
+                let lineno: usize = self.at().lineno;
                 // Se for um número, cria uma expressão de literal numérico
-                Expr::NumericLiteral(NumericLiteral {
+                return Expr::NumericLiteral(NumericLiteral {
                     kind: NodeType::NumericLiteral,
                     value: self.eat().value, // Consome o token e obtém o valor numérico
-                })
+                    column,
+                    position,
+                    lineno,
+                });
             }
             TokenType::String => {
+                let column: (usize, usize) = self.at().column;
+                let position: (usize, usize) = self.at().position;
+                let lineno: usize = self.at().lineno;
                 // Se for uma string, cria uma expressão de literal de string
-                Expr::StringLiteral(StringLiteral {
+                //
+                return Expr::StringLiteral(StringLiteral {
                     kind: NodeType::StringLiteral,
                     value: self.eat().value, // Consome o token e obtém o valor da string
-                })
+                    column,
+                    position,
+                    lineno,
+                });
             }
             TokenType::Null => {
+                let column: (usize, usize) = self.at().column;
+                let position: (usize, usize) = self.at().position;
+                let lineno: usize = self.at().lineno;
                 // Se for nulo, consome o token e cria uma expressão de literal nulo
                 self.eat();
-                Expr::NullLiteral(NullLiteral {
+                return Expr::NullLiteral(NullLiteral {
                     kind: NodeType::NullLiteral,
                     value: "Null", // Define o valor como "Null"
-                })
+                    column,
+                    position,
+                    lineno,
+                });
             }
 
             // Se for um undefined
             TokenType::Undefined => {
+                let column: (usize, usize) = self.at().column;
+                let position: (usize, usize) = self.at().position;
+                let lineno: usize = self.at().lineno;
                 self.eat();
-                Expr::UndefinedLiteral(UndefinedLiteral {
+                return Expr::UndefinedLiteral(UndefinedLiteral {
                     kind: NodeType::UndefinedLiteral,
                     value: "undefined",
-                })
+                    column,
+                    position,
+                    lineno,
+                });
             }
 
             // Se for um true
             TokenType::True => {
+                let column: (usize, usize) = self.at().column;
+                let position: (usize, usize) = self.at().position;
+                let lineno: usize = self.at().lineno;
                 self.eat();
-                Expr::TrueLiteral(TrueLiteral {
+                return Expr::TrueLiteral(TrueLiteral {
                     kind: NodeType::TrueLiteral,
-                })
+                    value: "true".to_string(),
+                    column,
+                    position,
+                    lineno,
+                });
             }
 
             // Se for um false
             TokenType::False => {
+                let column: (usize, usize) = self.at().column;
+                let position: (usize, usize) = self.at().position;
+                let lineno: usize = self.at().lineno;
                 self.eat();
-                Expr::FalseLiteral(FalseLiteral {
+                return Expr::FalseLiteral(FalseLiteral {
                     kind: NodeType::FalseLiteral,
-                })
+                    value: "false".to_string(),
+                    column,
+                    position,
+                    lineno,
+                });
             }
 
             // Se for um break;
             TokenType::Break => {
+                let column: (usize, usize) = self.at().column;
+                let position: (usize, usize) = self.at().position;
+                let lineno: usize = self.at().lineno;
                 self.eat();
                 // Espera um semicolon
                 self.expect(TokenType::Semicolon, "\";\" Expected.");
-                Expr::BreakExpr(BreakExpr {
+                return Expr::BreakExpr(BreakExpr {
                     kind: NodeType::BreakExpr,
-                })
+                    column,
+                    position,
+                    lineno,
+                });
             }
 
             TokenType::OParen => {
+                let column: (usize, usize) = self.at().column;
+                let position: (usize, usize) = self.at().position;
+                let lineno: usize = self.at().lineno;
                 // Se for um parêntese aberto, consome o token e analisa a expressão dentro dos parênteses
                 self.eat();
-                let expr = self.parse_expr(); // Analisa a expressão dentro dos parênteses
+                let expr: Expr = self.parse_expr(); // Analisa a expressão dentro dos parênteses
+                if self.at().token_type == TokenType::Comma {
+                    self.eat();
+
+                    let mut value: Vec<Expr> = Vec::new();
+                    value.push(expr);
+                    while self.at().token_type != TokenType::CParen {
+                        value.push(self.parse_expr());
+
+                        if self.at().token_type == TokenType::Comma {
+                            self.eat();
+                        }
+                    }
+
+                    self.expect(TokenType::CParen, "\")\" Expected."); // Espera um parêntese fechado
+
+                    return Expr::TupleLiteral(TupleLiteral {
+                        kind: NodeType::TupleLiteral,
+                        value,
+                        column,
+                        position,
+                        lineno,
+                    }); // Retorna a expressão analisada
+                }
+
                 self.expect(TokenType::CParen, "\")\" Expected."); // Espera um parêntese fechado
-                expr // Retorna a expressão analisada
+                return expr; // Retorna a expressão analisada
             }
             _ => {
+                let column: (usize, usize) = self.at().column;
+                let position: (usize, usize) = self.at().position;
+                let lineno: usize = self.at().lineno;
                 // Se for qualquer outro tipo de token
                 self.error(&format!("Unexpected token: {:?}", self.at().token_type)); // Gera um erro indicando um token inesperado
-                                                                                      // Retorna uma expressão nula como fallback
-                Expr::NullLiteral(NullLiteral {
+
+                // Retorna uma expressão nula como fallback
+                return Expr::NullLiteral(NullLiteral {
                     kind: NodeType::NullLiteral,
-                    value: "Null", // Define o valor como "Null"
-                })
+                    value: "null",
+                    column,
+                    position,
+                    lineno,
+                });
             }
         }
     }

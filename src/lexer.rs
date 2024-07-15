@@ -22,6 +22,30 @@ pub enum TokenType {
     LessThan,
     LessThanOrEqual,
     Minus,
+    Plus,
+    Div,
+    Mul,
+    Power,
+    Mod,
+    IntegerDiv,
+    BitwiseNot,
+    BitwiseOr,
+    BitwiseXor,
+    BitwiseAnd,
+    ShiftLeft,
+    ShiftRight,
+    PlusEq,
+    MinusEq,
+    MulEq,
+    PowerEq,
+    DivEq,
+    IntegerDivEq,
+    ModEq,
+    BitwiseXorEq,
+    BitwiseOrEq,
+    BitwiseAndEq,
+    ShiftLeftEq,
+    ShiftRightEq,
     // Tokens para comentários
     Comment,
     OComment,
@@ -29,13 +53,7 @@ pub enum TokenType {
     // Outros tokens comuns
     As,
     Unit,
-    Plus,
-    Div,
-    Mul,
-    Power,
-    Mod,
     Backslash,
-    Pipe,
     Exclamation,
     QuestionMark,
     And,
@@ -43,6 +61,8 @@ pub enum TokenType {
     Mov,
     Increment,
     Decrement,
+    Range,
+    RangeInclusive,
     // Tokens para tipos de dados e palavras-chave
     Array,
     Bool,
@@ -76,7 +96,8 @@ pub enum TokenType {
     Export,
     If,
     Else,
-    Switch,
+    When,
+    While,
     Break,
     True,
     False,
@@ -115,6 +136,8 @@ impl TokenDefinitions {
         literals.insert("[", TokenType::OBracket);
         literals.insert("]", TokenType::CBracket);
         literals.insert(",", TokenType::Comma);
+        literals.insert("..=", TokenType::RangeInclusive);
+        literals.insert("..", TokenType::Range);
         literals.insert(".", TokenType::Dot);
         literals.insert(":", TokenType::Colon);
         literals.insert(";", TokenType::Semicolon);
@@ -131,22 +154,42 @@ impl TokenDefinitions {
         literals.insert("*/", TokenType::CComment);
         literals.insert("+", TokenType::Plus);
         literals.insert("/", TokenType::Div);
+        literals.insert("//", TokenType::IntegerDiv);
         literals.insert("*", TokenType::Mul);
-        literals.insert("^", TokenType::Power);
+        literals.insert("**", TokenType::Power);
         literals.insert("%", TokenType::Mod);
         literals.insert("\\", TokenType::Backslash);
-        literals.insert("|", TokenType::Pipe);
         literals.insert("||", TokenType::Or);
         literals.insert("_", TokenType::UndefinedType);
         literals.insert("!", TokenType::Exclamation);
         literals.insert("?", TokenType::QuestionMark);
         literals.insert("&&", TokenType::And);
         literals.insert("=", TokenType::Attribution);
+        literals.insert("+=", TokenType::PlusEq);
+        literals.insert("-=", TokenType::MinusEq);
+        literals.insert("*=", TokenType::MulEq);
+        literals.insert("**=", TokenType::PowerEq);
+        literals.insert("/=", TokenType::DivEq);
+        literals.insert("//=", TokenType::IntegerDivEq);
+        literals.insert("%=", TokenType::ModEq);
+        literals.insert("^=", TokenType::BitwiseXorEq);
+        literals.insert("|=", TokenType::BitwiseOrEq);
+        literals.insert("&=", TokenType::BitwiseAndEq);
         literals.insert("++", TokenType::Increment);
         literals.insert("--", TokenType::Decrement);
+        literals.insert("|", TokenType::BitwiseOr);
+        literals.insert("^", TokenType::BitwiseXor);
+        literals.insert("&", TokenType::BitwiseAnd);
+        literals.insert("~", TokenType::BitwiseNot);
+        literals.insert("<<", TokenType::ShiftLeft);
+        literals.insert("<<=", TokenType::ShiftLeftEq);
+        literals.insert(">>", TokenType::ShiftRight);
+        literals.insert(">>=", TokenType::ShiftRightEq);
+
         // Tipos de dados e palavras-chave
         keywords.insert("loop", TokenType::Loop);
         keywords.insert("for", TokenType::For);
+        keywords.insert("while", TokenType::While);
         keywords.insert("unit", TokenType::Unit);
         keywords.insert("as", TokenType::As);
         keywords.insert("asm", TokenType::Asm);
@@ -158,7 +201,7 @@ impl TokenDefinitions {
         keywords.insert("export", TokenType::Export);
         keywords.insert("if", TokenType::If);
         keywords.insert("else", TokenType::Else);
-        keywords.insert("switch", TokenType::Switch);
+        keywords.insert("when", TokenType::When);
         keywords.insert("return", TokenType::Return);
         keywords.insert("break", TokenType::Break);
         keywords.insert("continue", TokenType::Continue);
@@ -198,16 +241,10 @@ pub struct Token {
     pub message: Option<String>,  // Mensagem de erro associada ao token (se houver)
 }
 
-fn substring(s: &str, i: usize, j: usize) -> Option<&str> {
-    let start_byte = s.char_indices().nth(i).map(|(k, _)| k)?;
-    let end_byte = s.char_indices().nth(j).map(|(k, _)| k)?;
-    s.get(start_byte..end_byte)
-}
-
 // Estrutura principal responsável pela análise léxica do código fonte
 pub struct Lexer<'a> {
     token_definitions: TokenDefinitions, // Definições de tokens
-    filename: &'a str,                   // Nome do arquivo fonte
+    filename: &'a String,                // Nome do arquivo fonte
     code: Option<String>,                // Código fonte a ser analisado
     ignoreable_chars: Vec<char>,         // Caracteres a serem ignorados durante a análise
     index: usize,                        // Índice atual no código fonte
@@ -220,8 +257,8 @@ pub struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     // Construtor da estrutura Lexer
-    pub fn new(filename: &str) -> Lexer {
-        let token_definitions = TokenDefinitions::new();
+    pub fn new(filename: &String) -> Lexer {
+        let token_definitions: TokenDefinitions = TokenDefinitions::new();
         Lexer {
             token_definitions,
             filename,
@@ -263,9 +300,9 @@ impl<'a> Lexer<'a> {
             .map_or(true, |code| self.endindex + 1 >= code.len())
     }
 
-    // Escaneia o próximo token no código fonte
+    // Escaneia o atual token no código fonte
     fn scan_token(&mut self) {
-        // Obtém o próximo caractere no código fonte
+        // Obtém o atual caractere no código fonte
         let char = self.eat_char();
         // Verifica se o caractere deve ser ignorado
         if self.ignoreable_chars.contains(&char) {
@@ -282,46 +319,58 @@ impl<'a> Lexer<'a> {
             // Se o caractere for uma aspas simples, escaneia uma cadeia de caracteres delimitada por aspas simples
             self.scan_single_quote_string();
         } else if let Some(pick_char) = self.pick_char() {
-            // Se o próximo caractere estiver disponível, verifica se há um token composto
+            // Se o atual caractere estiver disponível, verifica se há um token composto
             let two_char_literal: String = format!("{}{}", char, pick_char);
-            // Verifica se o token composto existe nas definições de literais
+            let three_char_literal: String = if let Some(next_pick_char) = self.pick_next() {
+                format!("{}{}{}", char, pick_char, next_pick_char)
+            } else {
+                two_char_literal.clone()
+            };
+
+            // Verifica se há um token composto de três caracteres
             if let Some(token_type) = self
+                .token_definitions
+                .literals
+                .get(three_char_literal.as_str())
+            {
+                self.add_token(token_type.clone(), three_char_literal); // Adiciona o token composto de três caracteres
+                self.eat_char(); // Avança para o segundo caractere
+                self.eat_char(); // Avança para o terceiro caractere
+            }
+            // Verifica se há um token composto de dois caracteres
+            else if let Some(token_type) = self
                 .token_definitions
                 .literals
                 .get(two_char_literal.as_str())
             {
-                // Se o token composto for encontrado, processa-o
                 if two_char_literal == "//" {
-                    // Se o token composto for um comentário de linha, pula o comentário
-                    self.eat_char();
-                    self.skip_comment(false);
+                    // Comentário de linha
+                    self.eat_char(); // Avança para o segundo caractere
+                    self.skip_comment(false); // Pula o comentário de linha
                 } else if two_char_literal == "/*" {
-                    // Se o token composto for o início de um comentário de bloco, pula o bloco de comentário
-                    self.eat_char();
-                    self.skip_comment(true);
+                    // Comentário de bloco
+                    self.eat_char(); // Avança para o segundo caractere
+                    self.skip_comment(true); // Pula o bloco de comentário
                 } else {
-                    // Adiciona o token composto à lista de tokens e avança para o próximo caractere
-                    self.add_token(token_type.clone(), two_char_literal);
-                    self.eat_char();
+                    self.add_token(token_type.clone(), two_char_literal); // Adiciona o token composto de dois caracteres
+                    self.eat_char(); // Avança para o segundo caractere
                 }
-            } else if let Some(token_type) = self
+            }
+            // Verifica se há um token de um único caractere
+            else if let Some(token_type) = self
                 .token_definitions
                 .literals
                 .get(char.to_string().as_str())
             {
-                // Se o token composto não for encontrado, verifica se o caractere simples é um literal
-                self.add_token(token_type.clone(), char.to_string());
+                self.add_token(token_type.clone(), char.to_string()); // Adiciona o token de um único caractere
             } else {
-                // Se o caractere não for um literal, verifica se é um número, um identificador ou um erro
+                // Se não for um literal, verifica se é um número, identificador ou um caractere desconhecido
                 if char.is_digit(10) {
-                    // Se o caractere for um dígito, escaneia um número
-                    self.scan_number(char);
+                    self.scan_number(char); // Escaneia número
                 } else if char.is_alphabetic() || char == '_' {
-                    // Se o caractere for alfabético ou um sublinhado, escaneia um identificador
-                    self.scan_identifier();
+                    self.scan_identifier(); // Escaneia identificador
                 } else {
-                    // Se o caractere for desconhecido, gera um erro
-                    self.error(format!("Unknown char: {}", char));
+                    self.error(format!("Unknown char: {}", char)); // Gera um erro para caractere desconhecido
                 }
             }
         }
@@ -347,7 +396,7 @@ impl<'a> Lexer<'a> {
             .map_or(String::new(), |code| code[start..end].to_string())
     }
 
-    // Consome o próximo caractere no código fonte e atualiza os índices e colunas correspondentes
+    // Consome o atual caractere no código fonte e atualiza os índices e colunas correspondentes
     fn eat_char(&mut self) -> char {
         let char = self.pick_char().unwrap_or('\0');
         self.endindex += 1;
@@ -355,11 +404,18 @@ impl<'a> Lexer<'a> {
         char
     }
 
-    // Obtém o próximo caractere no código fonte
+    // Obtém o atual caractere no código fonte
     fn pick_char(&self) -> Option<char> {
         self.code
             .as_ref()
             .and_then(|code: &String| code.chars().nth(self.endindex))
+    }
+
+    // Obtém o atual caractere no código fonte
+    fn pick_next(&self) -> Option<char> {
+        self.code
+            .as_ref()
+            .and_then(|code: &String| code.chars().nth(self.endindex + 1))
     }
 
     // Escaneia uma cadeia de caracteres delimitada por aspas duplas no código fonte
@@ -412,27 +468,54 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    // Escaneia um número no código fonte
     fn scan_number(&mut self, firstchar: char) {
         let mut num_str: String = String::new();
         num_str.push(firstchar);
         let mut has_dot: bool = false;
         let mut has_exponent: bool = false;
-        // o pick_char é o at do lexer.
-        // Escaneia inteiros, decimais, hexadecimais, octais e binários
+        let mut base: u32 = 10; // Base padrão é decimal
+
+        // Checar se o número tem um prefixo que indica uma base diferente (binário, octal, hexadecimal)
+        if firstchar == '0' {
+            if let Some(next_char) = self.pick_char() {
+                match next_char {
+                    'x' | 'X' => {
+                        base = 16;
+                        num_str.push(self.eat_char());
+                    }
+                    'o' | 'O' => {
+                        base = 8;
+                        num_str.push(self.eat_char());
+                    }
+                    'b' | 'B' => {
+                        base = 2;
+                        num_str.push(self.eat_char());
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Escanear o restante do número
         while let Some(char) = self.pick_char() {
             match char {
                 '0'..='9' => {
                     num_str.push(self.eat_char());
                 }
-                '.' => {
+                'a'..='f' | 'A'..='F' if base == 16 => {
+                    num_str.push(self.eat_char());
+                }
+                '.' if base == 10 => {
                     if has_dot || has_exponent {
+                        break;
+                    }
+                    if self.pick_next() == Some('.') {
                         break;
                     }
                     has_dot = true;
                     num_str.push(self.eat_char());
                 }
-                'e' | 'E' => {
+                'e' | 'E' if base == 10 => {
                     if has_exponent {
                         break;
                     }
@@ -444,28 +527,35 @@ impl<'a> Lexer<'a> {
                         }
                     }
                 }
-                'x' | 'X' | 'o' | 'O' | 'b' | 'B' => {
-                    let mut has_prefix: bool = true;
-                    num_str.push(self.eat_char());
-                    while let Some(next_char) = self.pick_char() {
-                        match next_char {
-                            '0'..='9' | 'a'..='f' | 'A'..='F' => {
-                                num_str.push(self.eat_char());
-                                has_prefix = false;
-                            }
-                            _ => break,
-                        }
-                    }
-                    if has_prefix {
-                        // Se nenhum dígito foi encontrado após o prefixo, é um erro
-                        self.error(format!("Invalid number format: {}", num_str));
-                    }
-                    break;
-                }
                 _ => break,
             }
         }
-        // Adiciona o token do número identificado
+
+        // Validação adicional para binários, octais e hexadecimais
+        match base {
+            2 => {
+                if num_str.chars().skip(2).any(|c| !matches!(c, '0' | '1')) {
+                    self.error(format!("Invalid binary number: {}", num_str));
+                }
+            }
+            8 => {
+                if num_str.chars().skip(2).any(|c| !matches!(c, '0'..='7')) {
+                    self.error(format!("Invalid octal number: {}", num_str));
+                }
+            }
+            16 => {
+                if num_str
+                    .chars()
+                    .skip(2)
+                    .any(|c| !matches!(c, '0'..='9' | 'a'..='f' | 'A'..='F'))
+                {
+                    self.error(format!("Invalid hexadecimal number: {}", num_str));
+                }
+            }
+            _ => {}
+        }
+
+        // Adicionar o token do número identificado
         self.add_token(TokenType::Number, num_str);
     }
 
@@ -479,8 +569,8 @@ impl<'a> Lexer<'a> {
             self.eat_char();
         }
         // Obtém o identificador e verifica se é uma palavra-chave
-        let text = self.get_current_chunk(None, None);
-        let token_type = self
+        let text: String = self.get_current_chunk(None, None);
+        let token_type: TokenType = self
             .token_definitions
             .keywords
             .get(text.as_str())
