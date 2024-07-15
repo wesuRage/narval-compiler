@@ -1,3 +1,1 @@
-auto penis: text = 256;
-
-write(penis);
+write("Hello, World!");
