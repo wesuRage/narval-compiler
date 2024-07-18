@@ -13,16 +13,27 @@ use code_generator::Generator;
 use compiler::Compiler;
 use lexer::{Lexer, Token};
 use parser::Parser;
-use std::{env, fs};
+use std::{env, fs, process::exit};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
 
+    if args.len() < 2 {
+        println!("Narval - the compiler for the Narval programming language.");
+        println!("USAGE: narval <input-file> [OPTIONS]\n");
+        println!("\t-o, --output     Output file");
+        println!("\t--preserve-asm   Keep the assembly intermediate file\n");
+        println!("Learn more: https://github.com/wesuRage/narval-compiler/");
+
+        exit(0);
+    }
+
     let filename: &String = &args[1].to_string();
+    // let filename: &String = &"./tests/main.nv".to_string();
     let exp_path: Option<std::borrow::Cow<str>> = shellexpand::full(filename).ok();
     let can_path: Option<std::path::PathBuf> =
         std::fs::canonicalize(exp_path.unwrap().as_ref()).ok();
-    let path = &can_path
+    let path: &String = &can_path
         .unwrap()
         .into_os_string()
         .into_string()
@@ -48,4 +59,6 @@ fn main() {
 
     let mut compiler: Compiler = Compiler::new(&full_path);
     compiler.compile();
+
+    // println!("{:#?}", ast);
 }

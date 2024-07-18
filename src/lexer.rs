@@ -53,7 +53,6 @@ pub enum TokenType {
     // Outros tokens comuns
     As,
     Unit,
-    Backslash,
     Exclamation,
     QuestionMark,
     And,
@@ -154,11 +153,10 @@ impl TokenDefinitions {
         literals.insert("*/", TokenType::CComment);
         literals.insert("+", TokenType::Plus);
         literals.insert("/", TokenType::Div);
-        literals.insert("//", TokenType::IntegerDiv);
         literals.insert("*", TokenType::Mul);
         literals.insert("**", TokenType::Power);
         literals.insert("%", TokenType::Mod);
-        literals.insert("\\", TokenType::Backslash);
+        literals.insert("\\", TokenType::IntegerDiv);
         literals.insert("||", TokenType::Or);
         literals.insert("_", TokenType::UndefinedType);
         literals.insert("!", TokenType::Exclamation);
@@ -170,7 +168,7 @@ impl TokenDefinitions {
         literals.insert("*=", TokenType::MulEq);
         literals.insert("**=", TokenType::PowerEq);
         literals.insert("/=", TokenType::DivEq);
-        literals.insert("//=", TokenType::IntegerDivEq);
+        literals.insert("\\=", TokenType::IntegerDivEq);
         literals.insert("%=", TokenType::ModEq);
         literals.insert("^=", TokenType::BitwiseXorEq);
         literals.insert("|=", TokenType::BitwiseOrEq);

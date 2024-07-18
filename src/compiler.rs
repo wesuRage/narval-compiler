@@ -1,4 +1,4 @@
-use std::{env, process::Command};
+use std::process::Command;
 
 pub struct Compiler<'a> {
     pub filename: &'a String,
@@ -10,16 +10,33 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn compile(&mut self) {
-        let narval_home = match env::var("NARVAL_HOME") {
-            Ok(val) => val,
-            Err(_) => {
-                eprintln!("Error: NARVAL_HOME environment variable not set.");
-                return;
-            }
-        };
+        let mut file_name: String = self.filename.split("/").last().unwrap().to_owned();
+        if file_name.contains(".") {
+            file_name = file_name.clone().split(".").next().unwrap().to_owned() + ".asm";
+        } else {
+            file_name = file_name.clone().to_owned() + ".asm";
+        }
 
-        let fasm_path = format!("{}/tools/fasm", narval_home);
+        if self.filename.contains(".") {
+            Command::new("/bin/fasm")
+                .arg(&file_name)
+                .output()
+                .expect("Error while compiling assembly file");
 
-        Command::new(&fasm_path).arg(self.filename).output();
+            // Command::new("/bin/rm")
+            //     .arg(file_name)
+            //     .output()
+            //     .expect("Error while removing assembly file");
+        } else {
+            Command::new("/bin/fasm")
+                .arg(format!("{}.asm -o {}.o", self.filename, self.filename))
+                .output()
+                .expect("Error while compiling assembly file");
+
+            // Command::new("/bin/rm")
+            //     .arg(file_name)
+            //     .output()
+            //     .expect("Error while removing assembly file");
+        }
     }
 }

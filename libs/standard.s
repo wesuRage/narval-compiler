@@ -1,4 +1,4 @@
-include "/root/rust/narval/libs/nv/linux.s"
+include "/root/rust/narval/libs/linux.s"
 
 segment readable writeable
     STANDARD_NEWLINE db 0x0A
@@ -55,9 +55,13 @@ read:
     mov rbp, rsp
 
     ; Body
-    mov rdi, [rbp+16]
-    mov rsi, [rbp+24]
-    mov rdx, [rbp+32]
+    push qword [rbp+16] 
+    call str_len           ; Chama str_len para calcular o comprimento do buffer
+    mov rdx, rax           ; Move o comprimento do buffer para rdx
+
+    ; Parâmetros para a syscall read
+    mov rdi, STD_IN        ; file descriptor (stdin)
+    mov rsi, [rbp+24]      ; buffer
     mov rax, SYS_read
     syscall
 

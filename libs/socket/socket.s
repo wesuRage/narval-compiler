@@ -1,4 +1,4 @@
-include "/root/rust/narval/libs/nv/linux.s"
+include "/root/rust/narval/libs/linux.s"
 
 MAX_CONN equ 1024
 REQUEST_CAPACITY equ 128*1024

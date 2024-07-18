@@ -163,14 +163,14 @@ impl Parser {
 
         // Formata a mensagem de erro com informações relevantes
         let formatted_message: String = format!(
-            "%%r{} %%b{}%%!:%%y{}%%!:%%y{}%%!:\n\t{}\n\t%%r{}%%!\n%%y{}%%!",
-            "ERROR:",
+            "%%b{}%%!:%%y{}%%!:%%y{}%%!:\n%%r{} %%y{}%%!\n\t{}\n\t%%r{}%%!",
             filename,
             lineno,
-            column.0 - 1,
+            column.0,
+            "ERROR:",
+            message,
             escape(line),
             column_repr,
-            message
         );
         printc(&formatted_message); // Imprime a mensagem formatada com cores
 
@@ -2033,7 +2033,8 @@ impl Parser {
             | TokenType::Minus
             | TokenType::Mod
             | TokenType::Mul
-            | TokenType::Div => {
+            | TokenType::Div
+            | TokenType::IntegerDiv => {
                 return self.parse_bitwise_expr();
             }
             _ => (),
@@ -2104,10 +2105,26 @@ impl Parser {
             self.eat();
             let right: Expr = match self.at().token_type {
                 TokenType::OBracket => self.parse_array_expr(),
-
                 TokenType::OBrace => self.parse_object_expr(),
                 _ => *self.parse_ternary_expr(),
             };
+            println!("{:#?}", right);
+
+            while self.at().token_type == TokenType::BitwiseOr
+                || self.at().token_type == TokenType::BitwiseAnd
+                || self.at().token_type == TokenType::BitwiseXor
+                || self.at().token_type == TokenType::ShiftLeft
+                || self.at().token_type == TokenType::ShiftRight
+                || self.at().token_type == TokenType::Plus
+                || self.at().token_type == TokenType::Minus
+                || self.at().token_type == TokenType::Mul
+                || self.at().token_type == TokenType::Div
+                || self.at().token_type == TokenType::Mod
+                || self.at().token_type == TokenType::Power
+                || self.at().token_type == TokenType::IntegerDiv
+            {
+                break;
+            }
 
             column.1 = self.at().column.1 - 1;
             position.1 = self.at().position.1 - 1;
@@ -2120,6 +2137,7 @@ impl Parser {
                 position,
                 lineno,
             });
+
             self.expect(TokenType::Semicolon, "\";\" Expected.");
         }
 
@@ -2323,6 +2341,7 @@ impl Parser {
         // Loop para lidar com operadores de multiplicação, divisão e módulo
         while self.at().token_type == TokenType::Mul
             || self.at().token_type == TokenType::Div
+            || self.at().token_type == TokenType::IntegerDiv
             || self.at().token_type == TokenType::Mod
         {
             let operator: String = self.eat().value; // Consome o operador

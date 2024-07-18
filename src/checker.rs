@@ -109,6 +109,7 @@ impl<'a> Checker<'a> {
             Some(Expr::ObjectLiteral(object)) => self.check_object(object),
             Some(Expr::VarDeclaration(decl)) => self.check_newvar(decl),
             Some(Expr::AssignmentExpr(expr)) => self.check_setvar(expr),
+            // Some(Expr::BinaryExpr(expr)) => self.check_binop(expr),
             _ => Some(Datatype::Undefined),
         }
     }
@@ -132,14 +133,14 @@ impl<'a> Checker<'a> {
             "^".repeat(data.1 .1 - data.1 .0)
         );
         let formatted_message: String = format!(
-            "%%r{} %%b{}%%!:%%y{}%%!:%%y{}%%!:\n\t{}\n\t%%r{}%%!\n%%y{}%%!",
-            "ERROR:",
+            "%%b{}%%!:%%y{}%%!:%%y{}%%!:\n%%r{} %%y{}%%!\n\t{}\n\t%%r{}%%!",
             filename,
             lineno,
-            column.0 - 1,
+            column.0,
+            "ERROR:",
+            message,
             escape(line),
             column_repr,
-            message
         );
         printc(&formatted_message);
     }
@@ -242,7 +243,7 @@ impl<'a> Checker<'a> {
             if self.namespace.existsvar(id.clone().symbol) {
                 let sucess = self.namespace.setvar(id.symbol, dt.unwrap());
                 match sucess {
-                    Ok(value) => (),
+                    Ok(_) => (),
                     Err(error) => self.error(assigne, error.as_str()),
                 }
                 return None;
@@ -252,4 +253,6 @@ impl<'a> Checker<'a> {
         }
         None
     }
+
+    // fn check_binop(&self, expr: BinaryExpr) -> Dt {}
 }
