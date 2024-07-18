@@ -1,1 +1,3 @@
-write("Hello, World!");
+qword expr: integer = 9\2;
+qword str_: text = int_to_str(expr);
+write(str_);
