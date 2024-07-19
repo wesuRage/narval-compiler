@@ -1,3 +1,3 @@
-qword expr: integer = 9\2;
-qword str_: text = int_to_str(expr);
-write(str_);
+qword expr: text = "sexo";
+qword txt: text = totxt(expr);
+write(txt);
