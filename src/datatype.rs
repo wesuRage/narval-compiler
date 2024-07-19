@@ -39,32 +39,68 @@ impl PartialEq for Datatype {
     }
 }
 
+impl Eq for Datatype { }
+
+//CRÉDITOS: ChatGPT modelo 4o
 impl Hash for Datatype {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        return {};
+        match self {
+            Datatype::Integer => state.write_u8(0),
+            Datatype::Decimal => state.write_u8(1),
+            Datatype::String => state.write_u8(2),
+            Datatype::Boolean => state.write_u8(3),
+            Datatype::Undefined => state.write_u8(4),
+            Datatype::Function((params, rettype)) => {
+                state.write_u8(5);
+                for (name, dt) in params {
+                    name.hash(state);
+                    dt.hash(state);
+                }
+                rettype.hash(state);
+            }
+            Datatype::Object(dt) => {
+                state.write_u8(6);
+                dt.hash(state);
+            }
+            Datatype::Array(dt) => {
+                state.write_u8(7);
+                dt.hash(state);
+            }
+            Datatype::Tuple(dt) => {
+                state.write_u8(8);
+                dt.hash(state);
+            }
+            Datatype::_Multitype(types) => {
+                state.write_u8(9);
+                for dt in types {
+                    dt.hash(state);
+                }
+            }
+            Datatype::_NOTYPE => state.write_u8(10),
+        }
     }
 }
+impl Datatype {
+     pub fn cast(&self, other: Datatype) -> Result<Datatype, String> {
+         match (self, other) {
+             (Datatype::Integer, Datatype::Decimal)
+             | (Datatype::Boolean, Datatype::Decimal)
+             | (Datatype::Decimal, Datatype::Decimal) => Ok(other),
 
-// impl Datatype {
-//     fn cast(&self, other: Datatype) -> Result<Datatype, String> {
-//         match (self, other) {
-//             (Datatype::Integer, Datatype::Decimal)
-//             | (Datatype::Boolean, Datatype::Decimal)
-//             | (Datatype::Decimal, Datatype::Decimal) => Ok(other),
+             (Datatype::String, Datatype::Array(Box::new(Datatype::Integer)))
+             | (Datatype::Integer, Datatype::Array(Box::new(Datatype::Integer))) => Ok(other),
 
-//             // (Datatype::String, Datatype::Array(Box::new(Datatype::Integer)))
-//             // | (Datatype::Integer, Datatype::Array(Box::new(Datatype::Integer))) => Ok(other),
-//             (Datatype::Boolean, Datatype::Integer) => Ok(other),
+             (Datatype::Boolean, Datatype::Integer) => Ok(other),
 
-//             (Datatype::Integer, Datatype::Boolean)
-//             | (Datatype::Decimal, Datatype::Boolean)
-//             | (Datatype::String, Datatype::Boolean)
-//             | (Datatype::Boolean, Datatype::Boolean) => Ok(other),
+             (Datatype::Integer, Datatype::Boolean)
+             | (Datatype::Decimal, Datatype::Boolean)
+             | (Datatype::String, Datatype::Boolean)
+             | (Datatype::Boolean, Datatype::Boolean) => Ok(other),
 
-//             (Datatype::Undefined, _) | (Datatype::_NOTYPE, _) => {
-//                 Err(format!("Impossible to cast \"null values\" for any type."))
-//             }
-//             _ => Ok(self.clone()),
-//         }
-//     }
-// }
+             (Datatype::Undefined, _) | (Datatype::_NOTYPE, _) => {
+                 Err(format!("Impossible to cast \"null values\" for any type."))
+             }
+             _ => Ok(self.clone()),
+         }
+     }
+ }

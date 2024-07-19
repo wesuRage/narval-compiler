@@ -244,38 +244,93 @@ impl<'a> Generator<'a> {
     }
 
     fn generate_binary_expr(&mut self, expr: Expr, identifier: Option<String>) {
+        if let Expr::BinaryExpr(exp) = expr {
+            self.generate_binary_additive_expr(*exp.left);
+            self.segments.code_main.push("\tmov rbx, rax\n".to_string());
+            self.generate_binary_additive_expr(*exp.right);
+
+            match exp.operator.as_str() {
+                "<<" => self.segments.code_main.push("\tshl rbx, rax\n".to_string()),
+                ">>" => self.segments.code_main.push("\tshr rbx, rax\n".to_string()),
+                _ => (),
+            }
+            if let Some(id) = identifier {
+                if let Some(_) = self.values.get(&id) {
+                    self.memory_access = true;
+                    self.segments
+                        .code_main
+                        .push(format!("\tmov [{}], rax\n", id));
+                }
+            }
+        }
+    }
+    fn generate_binary_additive_expr(&mut self, expr: Expr) {
         if let Expr::BinaryExpr(binary_expr) = expr {
-            self.generate_expr(*binary_expr.left);
+            self.generate_multiplicative_expr(*binary_expr.left);
 
             self.segments.code_main.push("\tmov rbx, rax\n".to_string());
 
-            self.generate_expr(*binary_expr.right);
+            self.generate_multiplicative_expr(*binary_expr.right);
 
             match binary_expr.operator.as_str() {
                 "+" => self.segments.code_main.push("\tadd rax, rbx\n".to_string()),
                 "-" => self.segments.code_main.push("\tsub rax, rbx\n".to_string()),
+                _ => (),
+            }
+
+            
+        } else {
+            self.generate_expr(expr);
+        }
+    }
+
+    fn generate_binary_multiplicative_expr(&mut self, expr: Expr) {
+        if let Expr::BinaryExpr(exp) = expr {
+            self.generate_binary_exponential_expr(*exp.left);
+            self.segments.code_main.push("\tmov rbx, rax\n".to_string());
+            self.generate_binary_exponential_expr(*exp.right);
+
+            match exp.operator.as_str() {
                 "*" => self
-                    .segments
+                .segments
+                .code_main
+                .push("\timul rax, rbx\n".to_string()),
+            "/" => {
+                self.segments
                     .code_main
-                    .push("\timul rax, rbx\n".to_string()),
-                "/" => {
-                    self.segments
-                        .code_main
-                        .push("\txchg rax, rbx\n".to_string());
-                    self.segments.code_main.push("\tcqo\n".to_string());
-                    self.segments.code_main.push("\tidiv rbx\n".to_string());
-                }
-                "%" => {
-                    self.segments
-                        .code_main
-                        .push("\txchg rax, rbx\n".to_string());
-                    self.segments.code_main.push("\tcqo\n".to_string());
-                    self.segments.code_main.push("\tidiv rbx\n".to_string());
-                    self.segments.code_main.push("\tmov rax, rdx\n".to_string());
-                }
-                "<<" => self.segments.code_main.push("\tshl rax, cl\n".to_string()),
-                ">>" => self.segments.code_main.push("\tshr rax, cl\n".to_string()),
-                "**" => {
+                    .push("\txchg rax, rbx\n".to_string());
+                self.segments.code_main.push("\tcqo\n".to_string());
+                self.segments.code_main.push("\tidiv rbx\n".to_string());
+            }
+            "%" => {
+                self.segments
+                    .code_main
+                    .push("\txchg rax, rbx\n".to_string());
+                self.segments.code_main.push("\tcqo\n".to_string());
+                self.segments.code_main.push("\tidiv rbx\n".to_string());
+                self.segments.code_main.push("\tmov rax, rdx\n".to_string());
+            }
+           
+            "\\" => {
+                self.segments
+                    .code_main
+                    .push("\txchg rax, rbx\n".to_string());
+                self.segments.code_main.push("\tcqo\n".to_string());
+                self.segments.code_main.push("\tidiv rbx\n".to_string());
+            }
+            }
+        } else {
+            self.generate_expr(expr);
+        }
+    }
+
+    fn generate_binary_exponential_expr(&mut self, expr: Expr) {
+        if let Expr::BinaryExpr(exp) = expr {
+            self.generate_bitwisenot_expr(*exp.left);
+            self.segments.code_main.push("\tmov rbx, rax\n".to_string());
+            self.generate_bitwisenot_expr(*exp.right);
+
+            if exp.operator.as_str() == "**" {
                     self.segments.code_main.push("\tmov rcx, rax\n".to_string());
                     self.segments.code_main.push("\tmov rax, 1\n".to_string());
                     self.segments
@@ -290,25 +345,18 @@ impl<'a> Generator<'a> {
                         .code_main
                         .push("\tloop pow_loop\n".to_string());
                     self.segments.code_main.push("pow_end:\n".to_string());
-                }
-                "\\" => {
-                    self.segments
-                        .code_main
-                        .push("\txchg rax, rbx\n".to_string());
-                    self.segments.code_main.push("\tcqo\n".to_string());
-                    self.segments.code_main.push("\tidiv rbx\n".to_string());
-                }
-                _ => (),
             }
+        } else {
+            self.generate_expr(expr);
+        }
+    }
 
-            if let Some(id) = identifier {
-                if let Some(_) = self.values.get(&id) {
-                    self.memory_access = true;
-                    self.segments
-                        .code_main
-                        .push(format!("\tmov [{}], rax\n", id));
-                }
-            }
+    fn generate_bitwisenot_expr(&mut self, expr: Expr) {
+        if let Expr::UnaryBitwiseNotExpr(exp) = expr {
+            self.generate_expr(*exp.operand);
+            self.segments.code_main.push("\tnot rax\n".to_string());
+        } else {
+            self.generate_expr(expr)
         }
     }
 

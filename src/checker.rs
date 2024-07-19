@@ -109,7 +109,7 @@ impl<'a> Checker<'a> {
             Some(Expr::ObjectLiteral(object)) => self.check_object(object),
             Some(Expr::VarDeclaration(decl)) => self.check_newvar(decl),
             Some(Expr::AssignmentExpr(expr)) => self.check_setvar(expr),
-            // Some(Expr::BinaryExpr(expr)) => self.check_binop(expr),
+            Some(Expr::BinaryExpr(expr)) => self.check_binop(expr),
             _ => Some(Datatype::Undefined),
         }
     }
@@ -254,5 +254,17 @@ impl<'a> Checker<'a> {
         None
     }
 
-    // fn check_binop(&self, expr: BinaryExpr) -> Dt {}
+    fn check_binop(&self, expr: BinaryExpr) -> Dt {
+        let left = self.check(self.expr2stmt(*expr.left));
+        let right = self.check(self.expr2stmt(*expr.right));
+
+        if let (Some(l), Some(r)) = (left, right) {
+            //TODO: checar operadores com graça, elegância, extravagância e tesão
+            match expr.operator.as_str() {
+                "+" => {
+                    
+                }
+            }
+        }
+    }
 }
