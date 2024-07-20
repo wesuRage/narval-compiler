@@ -30,11 +30,11 @@ Mas caso precise alterar o seu valor precise ser alterado, use a keyword `val` a
 
 ```narval
 val minhaVariavel = [];
-minhaVariavel[0] = ""
+minhaVariavel[0] = "Olá!"
 ```
 
 ### Tipos de dados
-Narval é uma linguagem com tipagem inferida, mas voce pode deixar a tipagem explícita a cada declaração. Os tipos de dados primitivos em Narval são: `text`, `integer`, `decimal`, `boolean`, `_` (undefined type), `array`, `tuple` e `object`.
+Narval é uma linguagem com tipagem inferida, mas voce pode deixar a tipagem explícita a cada declaração. Os tipos de dados primitivos em Narval são: `text`, `integer`, `decimal`, `boolean`, `any`, `array`, `tuple` e `object`.
 
 ```narval
 nome: text = "Alexandre";
@@ -45,7 +45,7 @@ habilidades: Array<text> = ["programar", "ler mangás", "jogar"]
 
 informacoes: (text, integer, decimal, Array<text>) = (nome, idade, peso, habilidades);
 
-complexo: Object<_> = {
+complexo: Object<any> = {
   key1: 3.14
   key2: {
     myArray: [(1, 2), (3, 4), (5, 6)],
