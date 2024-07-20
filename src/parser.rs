@@ -55,14 +55,14 @@ impl Parser {
     fn parse_data_type(&mut self) -> Datatype {
         // Match para determinar o tipo de token atual
         let data_type: Datatype = match self.at().token_type {
-            // Se o token atual for UndefinedType, Text, Integer, Decimal ou Bool
-            TokenType::UndefinedType => {
+            // Se o token atual for Any, Text, Integer, Decimal ou Bool
+            TokenType::Any => {
                 self.eat();
-                Datatype::Undefined
+                Datatype::Any
             }
             TokenType::Text => {
                 self.eat();
-                Datatype::String
+                Datatype::Text
             }
             TokenType::Integer => {
                 self.eat();
@@ -113,7 +113,7 @@ impl Parser {
             // Se o token atual não corresponder a nenhum tipo esperado
             _ => {
                 self.error(
-                    "Expected one of primitive types: text, integer, decimal, boolean, Object<T>, Array<T> or _.",
+                    "Expected one of primitive types: text, integer, decimal, boolean, Array<T>, Tuple<T>, Object<T> or _.",
                 );
                 // Gera um erro indicando o tipo esperado
                 Datatype::_NOTYPE
@@ -445,6 +445,7 @@ impl Parser {
                     let mut expr: Expr = Expr::NullLiteral(NullLiteral {
                         kind: NodeType::NullLiteral,
                         value: "null",
+                        typ: Some(Datatype::_NOTYPE),
                         column,
                         position,
                         lineno,
@@ -479,6 +480,7 @@ impl Parser {
                                     kind: NodeType::CallExpr,
                                     caller: Box::new(expr),
                                     args,
+                                    typ: None,
                                     column,
                                     position,
                                     lineno,
@@ -510,6 +512,7 @@ impl Parser {
                                                 UndefinedLiteral {
                                                     kind: NodeType::UndefinedLiteral,
                                                     value: "undefined",
+                                                    typ: Some(Datatype::Any),
                                                     column: self.at().column,
                                                     position: self.at().position,
                                                     lineno,
@@ -675,11 +678,12 @@ impl Parser {
                     kind: NodeType::VarDeclaration,
                     constant: false,
                     data_size: "auto".to_string(),
-                    data_type: Datatype::Undefined,
+                    data_type: Datatype::Any,
                     identifier: Some(identifier),
                     value: Box::from(Expr::UndefinedLiteral(UndefinedLiteral {
                         kind: NodeType::UndefinedLiteral,
                         value: "undefined",
+                        typ: Some(Datatype::Any),
                         column: self.at().column,
                         position: self.at().position,
                         lineno,
@@ -719,6 +723,7 @@ impl Parser {
                         value: Box::from(Expr::UndefinedLiteral(UndefinedLiteral {
                             kind: NodeType::UndefinedLiteral,
                             value: "undefined",
+                            typ: Some(Datatype::Any),
                             column: self.at().column,
                             position: self.at().position,
                             lineno,
@@ -806,7 +811,7 @@ impl Parser {
                     kind: NodeType::VarDeclaration,
                     constant: false,
                     data_size: "auto".to_string(),
-                    data_type: Datatype::Undefined,
+                    data_type: Datatype::Any,
                     identifier: Some(identifier),
                     value,
                     column,
@@ -984,6 +989,7 @@ impl Parser {
                         kind: NodeType::ArrayAccess,
                         array: Box::new(array),
                         index: Box::new(index_expr),
+                        typ: None,
                         column: column_array,
                         position: position_array,
                         lineno,
@@ -999,6 +1005,7 @@ impl Parser {
                     kind: NodeType::ArrayAccess,
                     array: Box::new(array),
                     index: Box::new(index_expr),
+                    typ: None,
                     column: column_array,
                     position: position_array,
                     lineno,
@@ -1150,14 +1157,16 @@ impl Parser {
 
         self.expect(TokenType::CBrace, "\"}\" Expected.");
 
-        // Analisa o bloco "else", se presente
+        // Analisa o bloco "else" ou "elif", se presente
         let mut alternate: Option<Vec<Stmt>> = None;
-        if self.not_eof() && self.at().token_type == TokenType::Else {
+        while self.not_eof()
+            && (self.at().token_type == TokenType::Else || self.at().token_type == TokenType::Elif)
+        {
             self.eat();
 
-            // Verifica se há um "if" após o "else"
-            if self.not_eof() && self.at().token_type == TokenType::If {
+            if self.at().token_type == TokenType::If || self.at().token_type == TokenType::Elif {
                 alternate = Some(vec![self.parse_if_stmt()]);
+                break;
             } else {
                 self.expect(TokenType::OBrace, "\"{\" Expected.");
 
@@ -1211,6 +1220,7 @@ impl Parser {
                 left: Box::new(expr),
                 right: Box::new(right),
                 operator,
+                typ: None,
                 column,
                 position,
                 lineno,
@@ -1242,6 +1252,7 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
+                typ: None,
                 column,
                 position,
                 lineno,
@@ -1275,6 +1286,7 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
+                typ: None,
                 column,
                 position,
                 lineno,
@@ -1300,6 +1312,7 @@ impl Parser {
             Expr::LogicalNotExpr(LogicalNotExpr {
                 kind: NodeType::LogicalNotExpr,
                 operand: Box::new(operand),
+                typ: None,
                 column,
                 position,
                 lineno,
@@ -1336,6 +1349,7 @@ impl Parser {
             let path = StringLiteral {
                 kind: NodeType::StringLiteral,
                 value: path_value,
+                typ: Some(Datatype::Text),
                 column: column_s,
                 position: position_s,
                 lineno: lineno_s,
@@ -1357,6 +1371,7 @@ impl Parser {
                 alias = Some(Identifier {
                     kind: NodeType::Identifier,
                     symbol: alias_value,
+                    typ: None,
                     column: column_i,
                     position: position_i,
                     lineno: lineno_i,
@@ -1417,6 +1432,7 @@ impl Parser {
                     .expect(TokenType::Identifier, "Identifier Expected.") // Analisa e armazena o identificador
                     .value
                     .clone(),
+                typ: None,
                 column: self.at().column,
                 position: self.at().position,
                 lineno: self.at().lineno,
@@ -1520,7 +1536,7 @@ impl Parser {
                         .value;
 
                     let mut size: String = "auto".to_string(); // Obtém o tamanho do parâmetro
-                    let mut data_type: Datatype = Datatype::Undefined; // Analisa e obtém o tipo de dados do parâmetro
+                    let mut data_type: Datatype = Datatype::Any; // Analisa e obtém o tipo de dados do parâmetro
                     if self.at().token_type == TokenType::Colon {
                         self.eat();
                         match self.at().token_type {
@@ -1532,7 +1548,7 @@ impl Parser {
                                 size = self.eat().value;
                                 data_type = self.parse_data_type()
                             }
-                            TokenType::UndefinedType
+                            TokenType::Any
                             | TokenType::Text
                             | TokenType::Integer
                             | TokenType::Decimal
@@ -1561,7 +1577,7 @@ impl Parser {
         }
 
         let mut return_size: String = "auto".to_string();
-        let mut return_type: Datatype = Datatype::Undefined;
+        let mut return_type: Datatype = Datatype::Any;
 
         if self.at().token_type == TokenType::Colon {
             self.eat();
@@ -1573,7 +1589,7 @@ impl Parser {
                 | TokenType::Qword => {
                     return_size = self.eat().value;
                     match self.at().token_type {
-                        TokenType::UndefinedType
+                        TokenType::Any
                         | TokenType::Text
                         | TokenType::Integer
                         | TokenType::Decimal
@@ -1584,7 +1600,7 @@ impl Parser {
                         _ => self.error("Expected type after size."),
                     }
                 }
-                TokenType::UndefinedType
+                TokenType::Any
                 | TokenType::Text
                 | TokenType::Integer
                 | TokenType::Decimal
@@ -1884,6 +1900,7 @@ impl Parser {
             condition: Box::new(condition),
             consequent,
             alternate,
+            typ: None,
             column,
             position,
             lineno,
@@ -1945,6 +1962,7 @@ impl Parser {
                 Expr::UnaryMinusExpr(UnaryMinusExpr {
                     kind: NodeType::UnaryMinusExpr,
                     operand: Box::new(operand),
+                    typ: None,
                     column,
                     position,
                     lineno,
@@ -1960,6 +1978,7 @@ impl Parser {
                 Expr::LogicalNotExpr(LogicalNotExpr {
                     kind: NodeType::LogicalNotExpr,
                     operand: Box::new(operand),
+                    typ: None,
                     column,
                     position,
                     lineno,
@@ -1975,6 +1994,7 @@ impl Parser {
                 Expr::UnaryBitwiseNotExpr(UnaryBitwiseNotExpr {
                     kind: NodeType::UnaryBitwiseNotExpr,
                     operand: Box::new(operand),
+                    typ: Some(Datatype::Integer),
                     column,
                     position,
                     lineno,
@@ -2179,6 +2199,7 @@ impl Parser {
         Expr::ArrayExpr(ArrayExpr {
             kind: NodeType::ArrayExpr,
             elements: array,
+            typ: None,
             column,
             position,
             lineno,
@@ -2217,6 +2238,7 @@ impl Parser {
                 Some(Box::new(Expr::StringLiteral(StringLiteral {
                     kind: NodeType::StringLiteral,
                     value: key.clone(),
+                    typ: Some(Datatype::Text),
                     column: self.at().column,
                     position: self.at().position,
                     lineno: self.at().lineno,
@@ -2259,6 +2281,7 @@ impl Parser {
         Expr::ObjectLiteral(ObjectLiteral {
             kind: NodeType::ObjectLiteral,
             properties,
+            typ: None,
             column,
             position,
             lineno,
@@ -2291,6 +2314,7 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
+                typ: None,
                 column,
                 position,
                 lineno,
@@ -2321,6 +2345,7 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
+                typ: None,
                 column,
                 position,
                 lineno,
@@ -2355,6 +2380,7 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
+                typ: None,
                 column,
                 position,
                 lineno,
@@ -2385,6 +2411,7 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
+                typ: None,
                 column,
                 position,
                 lineno,
@@ -2416,10 +2443,12 @@ impl Parser {
                         property: Box::new(Expr::Identifier(Identifier {
                             kind: NodeType::Identifier,
                             symbol: property.value,
+                            typ: None,
                             column: column_identifier,
                             position: position_identifier,
                             lineno,
                         })),
+                        typ: None,
                         column: column_member,
                         position: position_member,
                         lineno,
@@ -2455,6 +2484,7 @@ impl Parser {
             kind: NodeType::CallExpr,
             caller: Box::new(caller),
             args,
+            typ: None,
             column,
             position,
             lineno,
@@ -2532,6 +2562,7 @@ impl Parser {
                 return Expr::Identifier(Identifier {
                     kind: NodeType::Identifier,
                     symbol: self.eat().value, // Consome o token e obtém o valor do identificador
+                    typ: None,
                     column,
                     position,
                     lineno,
@@ -2545,6 +2576,7 @@ impl Parser {
                 return Expr::NumericLiteral(NumericLiteral {
                     kind: NodeType::NumericLiteral,
                     value: self.eat().value, // Consome o token e obtém o valor numérico
+                    typ: None,
                     column,
                     position,
                     lineno,
@@ -2559,6 +2591,7 @@ impl Parser {
                 return Expr::StringLiteral(StringLiteral {
                     kind: NodeType::StringLiteral,
                     value: self.eat().value, // Consome o token e obtém o valor da string
+                    typ: Some(Datatype::Text),
                     column,
                     position,
                     lineno,
@@ -2573,6 +2606,7 @@ impl Parser {
                 return Expr::NullLiteral(NullLiteral {
                     kind: NodeType::NullLiteral,
                     value: "Null", // Define o valor como "Null"
+                    typ: Some(Datatype::_NOTYPE),
                     column,
                     position,
                     lineno,
@@ -2588,6 +2622,7 @@ impl Parser {
                 return Expr::UndefinedLiteral(UndefinedLiteral {
                     kind: NodeType::UndefinedLiteral,
                     value: "undefined",
+                    typ: Some(Datatype::Any),
                     column,
                     position,
                     lineno,
@@ -2603,6 +2638,7 @@ impl Parser {
                 return Expr::TrueLiteral(TrueLiteral {
                     kind: NodeType::TrueLiteral,
                     value: "true".to_string(),
+                    typ: Some(Datatype::Boolean),
                     column,
                     position,
                     lineno,
@@ -2618,6 +2654,7 @@ impl Parser {
                 return Expr::FalseLiteral(FalseLiteral {
                     kind: NodeType::FalseLiteral,
                     value: "false".to_string(),
+                    typ: Some(Datatype::Boolean),
                     column,
                     position,
                     lineno,
@@ -2665,6 +2702,7 @@ impl Parser {
                     return Expr::TupleLiteral(TupleLiteral {
                         kind: NodeType::TupleLiteral,
                         value,
+                        typ: None,
                         column,
                         position,
                         lineno,
@@ -2685,6 +2723,7 @@ impl Parser {
                 return Expr::NullLiteral(NullLiteral {
                     kind: NodeType::NullLiteral,
                     value: "null",
+                    typ: Some(Datatype::_NOTYPE),
                     column,
                     position,
                     lineno,

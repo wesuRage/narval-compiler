@@ -4,16 +4,15 @@ entry main
 include "/root/rust/narval/libs/standard.s"
 
 segment readable writeable
-	expr dq "sexo", 0x0
-	txt dq 0x0
+	__STR_0 db "#", 0x0
 
 segment readable executable
 main:
-	push expr
-	call totxt
+	push __STR_0
+	push 5
+	call __txt_repeater
 
-	mov [txt], rax
-	push qword [txt]
+	push rax
 	call write
 
 	push 0

@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::colors::{escape, printc};
-use crate::datatype::*;
+use crate::datatype::Datatype;
+use crate::datatype::Datatype::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -103,14 +104,15 @@ impl<'a> Checker<'a> {
     pub fn check(&mut self, stmt: Stmt) -> Dt {
         match stmt.expr {
             Some(Expr::Identifier(id)) => self.check_id(id),
-            Some(Expr::NullLiteral(_)) => Some(Datatype::Undefined),
-            Some(Expr::NumericLiteral(_)) => Some(Datatype::Integer),
-            Some(Expr::StringLiteral(_)) => Some(Datatype::String),
+            Some(Expr::NullLiteral(_)) => Some(Any),
+            Some(Expr::NumericLiteral(_)) => Some(Integer),
+            Some(Expr::StringLiteral(_)) => Some(Text),
+            Some(Expr::TrueLiteral(_)) | Some(Expr::FalseLiteral(_)) => Some(Boolean),
             Some(Expr::ObjectLiteral(object)) => self.check_object(object),
             Some(Expr::VarDeclaration(decl)) => self.check_newvar(decl),
             Some(Expr::AssignmentExpr(expr)) => self.check_setvar(expr),
             Some(Expr::BinaryExpr(expr)) => self.check_binop(expr),
-            _ => Some(Datatype::Undefined),
+            _ => Some(Any),
         }
     }
 
@@ -121,12 +123,12 @@ impl<'a> Checker<'a> {
     }
 
     fn error(&mut self, node: Expr, message: &str) {
-        let nd: &Expr = &node; // Obtém o token atual
-        let filename: &String = &self.filename; // Obtém o nome do arquivo do token
+        let nd: &Expr = &node;
+        let filename: &String = &self.filename;
         let data: ((usize, usize), (usize, usize), usize) = nd.local();
-        let column: (usize, usize) = data.1; // Obtém a posição da coluna do token
-        let lineno: usize = data.2; // Obtém o número da linha do token
-        let line: &String = &self.lines.as_ref().unwrap()[lineno - 1]; // Obtém a linha do código fonte
+        let column: (usize, usize) = data.1;
+        let lineno: usize = data.2;
+        let line: &String = &self.lines.as_ref().unwrap()[lineno - 1];
         let column_repr: String = format!(
             "{}{}",
             " ".repeat(column.0 - 1),
@@ -150,7 +152,7 @@ impl<'a> Checker<'a> {
             Ok(value) => value.clone(),
             Err(error) => {
                 self.error(Expr::Identifier(expr.clone()), &error);
-                Some(Datatype::Undefined)
+                Some(Any)
             }
         };
     }
@@ -164,13 +166,14 @@ impl<'a> Checker<'a> {
                     Expr::StringLiteral(StringLiteral {
                         kind: NodeType::StringLiteral,
                         value: expr.clone(),
+                        typ: Some(Text),
                         column: (0, 0),
                         position: (0, 0),
                         lineno: 0,
                     }),
                     &error,
                 );
-                Some(Datatype::Undefined)
+                Some(Any)
             }
         };
     }
@@ -208,9 +211,11 @@ impl<'a> Checker<'a> {
         }
 
         return if types.len() == 1 {
-            Some(Datatype::Object(Box::new(types[0].clone())))
+            let r = Some(Object(Box::new(types[0].clone())));
+
+            return r;
         } else {
-            Some(Datatype::Undefined)
+            Some(Any)
         };
     }
 
@@ -220,7 +225,18 @@ impl<'a> Checker<'a> {
             .expect("Error while creating new variable");
     }
     fn check_newvar(&mut self, decl: VarDeclaration) -> Dt {
-        let dt = self.check(self.expr2stmt(*(decl.value)));
+        let dt = self.check(self.expr2stmt(*(decl.clone().value)));
+        if decl.data_type != dt.clone().unwrap() {
+            self.error(
+                *(decl.clone().value),
+                format!(
+                    "Type mismatch: expected type {} for value, but found {}",
+                    decl.data_type,
+                    dt.clone().unwrap()
+                )
+                .as_str(),
+            )
+        }
         self.newvar(decl.identifier.unwrap(), dt, false);
         None
     }
@@ -254,17 +270,112 @@ impl<'a> Checker<'a> {
         None
     }
 
-    fn check_binop(&self, expr: BinaryExpr) -> Dt {
-        let left = self.check(self.expr2stmt(*expr.left));
-        let right = self.check(self.expr2stmt(*expr.right));
+    fn check_binop(&mut self, expr: BinaryExpr) -> Dt {
+        let left: Option<Datatype> = self.check(self.expr2stmt(*expr.left.clone()));
+        let right: Option<Datatype> = self.check(self.expr2stmt(*expr.right.clone()));
 
         if let (Some(l), Some(r)) = (left, right) {
             //TODO: checar operadores com graça, elegância, extravagância e tesão
-            match expr.operator.as_str() {
-                "+" => {
-                    
+            let op = expr.operator.as_str();
+            match op {
+                "+" | "-" | "\\" | "/" | "**" => {
+                    let isntnum_l = !(l == Integer || l == Decimal);
+                    let isntnum_r = !(r == Integer || r == Decimal);
+
+                    if isntnum_l && !isntnum_r {
+                        self.error(
+                            *expr.left.clone(),
+                            format!(
+                                "Attempting to use non-numerical types in \"{}\" operation.",
+                                op
+                            )
+                            .as_str(),
+                        );
+                    } else if !isntnum_l && isntnum_r {
+                        self.error(
+                            *expr.right.clone(),
+                            format!(
+                                "Attempting to use non-numerical types in \"{}\" operation.",
+                                op
+                            )
+                            .as_str(),
+                        );
+                    } else if isntnum_l && isntnum_r {
+                        self.error(
+                            Expr::BinaryExpr(expr.clone()),
+                            format!(
+                                "Attempting to use non-numerical types in \"{}\" operation.",
+                                op
+                            )
+                            .as_str(),
+                        )
+                    }
+                    let casted = l.cast(&r);
+
+                    match casted {
+                        Ok(dt) => Some(dt),
+                        Err(err) => {
+                            self.error(Expr::BinaryExpr(expr.clone()), err.as_str());
+                            Some(Any)
+                        }
+                    }
                 }
+                "*" => {
+                    if l == Text {
+                        if r != Integer {
+                            self.error(
+                                Expr::BinaryExpr(expr.clone()),
+                                "Can't repeat a string using non-integer values.",
+                            );
+                        }
+                        return Some(Text);
+                    } else {
+                        let isntnum_l = !(l == Integer || l == Decimal);
+                        let isntnum_r = !(r == Integer || r == Decimal);
+
+                        if isntnum_l && !isntnum_r {
+                            self.error(
+                                *expr.left.clone(),
+                                format!(
+                                    "Attempting to use non-numerical types in \"{}\" operation.",
+                                    op
+                                )
+                                .as_str(),
+                            );
+                        } else if !isntnum_l && isntnum_r {
+                            self.error(
+                                *expr.right.clone(),
+                                format!(
+                                    "Attempting to use non-numerical types in \"{}\" operation.",
+                                    op
+                                )
+                                .as_str(),
+                            );
+                        } else if isntnum_l && isntnum_r {
+                            self.error(
+                                Expr::BinaryExpr(expr.clone()),
+                                format!(
+                                    "Attempting to use non-numerical types in \"{}\" operation.",
+                                    op
+                                )
+                                .as_str(),
+                            )
+                        }
+                        let casted = l.cast(&r);
+
+                        match casted {
+                            Ok(dt) => Some(dt),
+                            Err(err) => {
+                                self.error(Expr::BinaryExpr(expr.clone()), err.as_str());
+                                Some(Any)
+                            }
+                        }
+                    }
+                }
+                _ => Some(Any),
             }
+        } else {
+            return Some(Any);
         }
     }
 }

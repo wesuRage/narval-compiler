@@ -1,17 +1,101 @@
 include "/root/rust/narval/libs/linux.s"
 
 segment readable writeable
-    STANDARD_NEWLINE db 0x0A
-    STANDARD_CLEAR db 0x1B, "[H", 0x1B, "[2J", 0
+    __TEMP_STRING_BUFFER rb 1024*1024
+    __STANDARD_NEWLINE db 0x0A
+    __STANDARD_CLEAR db 0x1B, "[H", 0x1B, "[2J", 0
 
 
 segment readable executable
+;--------------------------------------------------
+munmap:
+    push rbp
+    mov rbp, rsp
+
+    mov rsp, rbp
+    pop rbp
+    ret
+
+;--------------------------------------------------
+mmap:
+    push rbp
+    mov rbp, rsp
+
+    mov rdi, [rsp+56]  ; addr
+    mov rsi, [rsp+48]  ; length
+    mov rdx, [rsp+40]  ; prot
+    mov r10, [rsp+32]  ; flags
+    mov r8,  [rsp+24]  ; fd
+    mov r9,  [rsp+16]  ; offset
+    mov rax, 9
+    syscall
+
+    mov rsp, rbp
+    pop rbp
+    ret
+
+;--------------------------------------------------
+__txt_repeater:
+    push rbp
+    mov rbp, rsp
+
+    mov rdi, __TEMP_STRING_BUFFER
+    mov rsi, [rbp+24] ; source string
+    mov rcx, [rbp+16] ; number of repetitions
+
+    xor rdx, rdx      ; repetition index
+    mov r8, rdi       ; r8 points to the start of the destination buffer
+
+.repeat:
+    cmp rdx, rcx
+    jge .end_repeat
+
+    ; Copiar a string fonte para o buffer de destino
+    mov r9, rsi       ; r9 aponta para o início da string fonte
+    .copy_string:
+        mov al, byte [r9]
+        cmp al, 0
+        je .copy_done
+        mov byte [r8], al
+        inc r8
+        inc r9
+        jmp .copy_string
+    .copy_done:
+    inc rdx
+    jmp .repeat
+
+.end_repeat:
+    ; Adicionar o terminador nulo no final da string
+    mov byte [r8], 0
+    mov rax, rdi
+
+    mov rsp, rbp
+    pop rbp
+    ret
+;--------------------------------------------------
+__pow:
+    push rbp
+    mov rbp, rsp
+
+    mov rax, [rsp+24]
+    mov rbx, [rsp+16]
+    mov rcx, rax
+    mov rax, 1          ; initializes the result
+    test rcx, rcx
+    jz .pow_end
+.pow_loop:
+    imul rax, rbx
+    loop .pow_loop
+.pow_end:
+    mov rsp, rbp
+    pop rbp
+    ret
 ;--------------------------------------------------
 clear:
     push rbp
     mov rbp, rsp
 
-    push STANDARD_CLEAR
+    push __STANDARD_CLEAR
     call write
 
     mov rsp, rbp
@@ -19,7 +103,7 @@ clear:
     ret
 
 ;--------------------------------------------------
-delay:
+nanosleep:
     push rbp
     mov rbp, rsp
 
@@ -34,85 +118,71 @@ delay:
 
 ;--------------------------------------------------
 exit:
-    ; Prologue
     push rbp
     mov rbp, rsp
 
-    ; Body
     mov rax, SYS_exit
     mov rdi, [rbp+16]
     syscall
 
-    ; Epilogue
     mov rsp, rbp
     pop rbp
     ret
 
 ;--------------------------------------------------
 read:
-    ; Prologue
     push rbp
     mov rbp, rsp
 
-    ; Body
-    push qword [rbp+16] 
+    push qword [rbp+24] 
     call str_len           ; Chama str_len para calcular o comprimento do buffer
     mov rdx, rax           ; Move o comprimento do buffer para rdx
 
     ; Parâmetros para a syscall read
     mov rdi, STD_IN        ; file descriptor (stdin)
-    mov rsi, [rbp+24]      ; buffer
+    mov rsi, [rbp+16]
     mov rax, SYS_read
     syscall
 
-    ; Epilogue
     mov rsp, rbp
     pop rbp
     ret
 
 ;--------------------------------------------------
 write_raw:
-    ; Prologue
     push rbp
     mov rbp, rsp
 
-    ; Body
-    mov rdi, [rbp+16]
+    mov rdi, [rbp+32]
     mov rsi, [rbp+24]
-    mov rdx, [rbp+32]
+    mov rdx, [rbp+16]
     mov rax, SYS_write
     syscall
 
-    ; Epilogue
     mov rsp, rbp
     pop rbp
     ret
 
 ;--------------------------------------------------
 open:
-    ; Prologue
     push rbp
     mov rbp, rsp
 
-    ; Body
-    mov rdi, [rbp+16]
+    mov rdi, [rbp+32]
     mov rsi, [rbp+24]
-    mov rdx, [rbp+32]
+    mov rdx, [rbp+16]
     mov rax, SYS_open
     syscall
 
-    ; Epilogue
     mov rsp, rbp
     pop rbp
     ret
 
 ;--------------------------------------------------
 write:
-    ; Prologue
     push rbp
     mov rbp, rsp
 
-    ; Body
     push qword [rbp+16]
     call str_len
 
@@ -124,23 +194,20 @@ write:
 
     mov rax, SYS_write
     mov rdi, STD_OUT
-    mov rsi, STANDARD_NEWLINE
+    mov rsi, __STANDARD_NEWLINE
     mov rdx, 1
     syscall
 
-    ; Epilogue
     mov rsp, rbp
     pop rbp
     ret
 
 ;--------------------------------------------------
 str_len:
-    ; Prologue
     push rbp
     mov rbp, rsp
     push rdi
 
-    ; Body
     mov rdi, [rbp+16]  ; str_ptr
     xor rax, rax
 .next_char:
@@ -153,7 +220,6 @@ str_len:
     sub rdi, [rbp+16]  ; Calcula o comprimento
     mov rax, rdi
 
-    ; Epilogue
     pop rdi
     mov rsp, rbp
     pop rbp
@@ -161,7 +227,6 @@ str_len:
 
 ;--------------------------------------------------
 int_to_str:
-    ; Prologue
     push rbp
     mov rbp, rsp
     push rbx
@@ -170,7 +235,6 @@ int_to_str:
     push rdi
     push r9
 
-    ; Body
     sub rsp, 32
     mov rdi, rsp
     add rdi, 31
@@ -203,7 +267,6 @@ int_to_str:
     mov rax, rdi
     add rsp, 32
 
-    ; Epilogue
     pop r9
     pop rdi
     pop rdx
@@ -255,21 +318,19 @@ str_to_int:
 
 ;--------------------------------------------------
 starts_with:
-    ; Prologue
     push rbp
     mov rbp, rsp
 
-    ; Body
-    mov rdi, [rbp+16]  ; text
+    mov rdi, [rbp+24]  ; text
     call str_len
     mov rsi, rax
-    mov rdi, [rbp+24]  ; prefix
+    mov rdi, [rbp+16]  ; prefix
     call str_len
     mov r10, rax
     xor rax, rax
     xor rbx, rbx
-    mov rdi, [rbp+16]  ; text
-    mov rdx, [rbp+24]  ; prefix
+    mov rdi, [rbp+24]  ; text
+    mov rdx, [rbp+16]  ; prefix
 .next_char:
     cmp rsi, 0
     jle .done
@@ -293,7 +354,6 @@ starts_with:
 .yes:
     mov rax, 1
 .end_int_to_str:
-    ; Epilogue
     mov rsp, rbp
     pop rbp
     ret

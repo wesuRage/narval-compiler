@@ -12,9 +12,11 @@ pub struct Generator<'a> {
     pub assembly: String,
     pub max_local_value: &'a str,
     pub values: HashMap<String, (String, NodeType)>,
-    pub strings: HashMap<String, String>,
+    pub strings: HashMap<String, (String, Option<String>)>,
     pub unitialized_strings_counter: usize,
     pub memory_access: bool,
+    pub current_string: Option<String>,
+    pub current_int: i32,
 }
 
 #[derive(Clone)]
@@ -45,9 +47,11 @@ impl<'a> Generator<'a> {
         let assembly: String = String::new();
         let max_local_value: &str = "db";
         let values: HashMap<String, (String, NodeType)> = HashMap::new();
-        let strings: HashMap<String, String> = HashMap::new();
+        let strings: HashMap<String, (String, Option<String>)> = HashMap::new();
         let unitialized_strings_counter: usize = 0;
         let memory_access: bool = false;
+        let current_string: Option<String> = None;
+        let current_int: i32 = 0;
 
         Generator {
             program: tree,
@@ -59,6 +63,8 @@ impl<'a> Generator<'a> {
             strings,
             unitialized_strings_counter,
             memory_access,
+            current_string,
+            current_int,
         }
     }
 
@@ -130,7 +136,7 @@ impl<'a> Generator<'a> {
                 match *arg {
                     Expr::StringLiteral(ref str_lit) => {
                         if let Some(existing_identifier) = self.strings.get(&str_lit.value) {
-                            arg_stack.push(CallerType::Str(existing_identifier.clone()));
+                            arg_stack.push(CallerType::Str(existing_identifier.0.clone()));
                         } else {
                             let string = format!(
                                 "\t__STR_{} db \"{}\", 0x0\n",
@@ -140,7 +146,7 @@ impl<'a> Generator<'a> {
                             self.segments.data.push(string);
                             let identifier = format!("__STR_{}", self.unitialized_strings_counter);
                             self.strings
-                                .insert(str_lit.value.clone(), identifier.clone());
+                                .insert(str_lit.value.clone(), (identifier.clone(), None));
                             arg_stack.push(CallerType::Str(identifier));
                             self.unitialized_strings_counter += 1;
                         }
@@ -174,8 +180,6 @@ impl<'a> Generator<'a> {
                     _ => panic!("Unexpected argument type in call expression."),
                 }
             }
-
-            arg_stack.reverse();
 
             for arg in arg_stack {
                 match arg {
@@ -228,18 +232,30 @@ impl<'a> Generator<'a> {
             Expr::BinaryExpr(binary_expr) => {
                 self.generate_binary_expr(Expr::BinaryExpr(binary_expr), None)
             }
-            Expr::NumericLiteral(num_lit) => {
+            Expr::NumericLiteral(num) => {
                 self.segments
                     .code_main
-                    .push(format!("\tmov rax, {}\n", num_lit.value));
+                    .push(format!("\tmov rax, {}\n", num.value));
+                self.current_int = num.value.parse().ok().unwrap();
             }
             Expr::Identifier(ident) => {
                 self.memory_access = true;
                 self.segments
                     .code_main
-                    .push(format!("\tmovzx rax, [{}]\n", ident.symbol));
+                    .push(format!("\tmovzx rax, [{}]\n", ident.symbol))
             }
-            _ => panic!("Unsupported expression type"),
+            Expr::StringLiteral(string) => {
+                let string = format!(
+                    "\t__STR_{} db \"{}\", 0x0\n",
+                    self.unitialized_strings_counter, string.value
+                );
+
+                self.segments.data.push(string);
+                self.current_string = Some(format!("__STR_{}", self.unitialized_strings_counter));
+            }
+            _ => {
+                panic!("Unsupported expression type");
+            }
         }
     }
 
@@ -266,19 +282,17 @@ impl<'a> Generator<'a> {
     }
     fn generate_binary_additive_expr(&mut self, expr: Expr) {
         if let Expr::BinaryExpr(binary_expr) = expr {
-            self.generate_multiplicative_expr(*binary_expr.left);
+            self.generate_binary_multiplicative_expr(*binary_expr.left);
 
             self.segments.code_main.push("\tmov rbx, rax\n".to_string());
 
-            self.generate_multiplicative_expr(*binary_expr.right);
+            self.generate_binary_multiplicative_expr(*binary_expr.right);
 
             match binary_expr.operator.as_str() {
                 "+" => self.segments.code_main.push("\tadd rax, rbx\n".to_string()),
                 "-" => self.segments.code_main.push("\tsub rax, rbx\n".to_string()),
                 _ => (),
             }
-
-            
         } else {
             self.generate_expr(expr);
         }
@@ -291,33 +305,50 @@ impl<'a> Generator<'a> {
             self.generate_binary_exponential_expr(*exp.right);
 
             match exp.operator.as_str() {
-                "*" => self
-                .segments
-                .code_main
-                .push("\timul rax, rbx\n".to_string()),
-            "/" => {
-                self.segments
-                    .code_main
-                    .push("\txchg rax, rbx\n".to_string());
-                self.segments.code_main.push("\tcqo\n".to_string());
-                self.segments.code_main.push("\tidiv rbx\n".to_string());
-            }
-            "%" => {
-                self.segments
-                    .code_main
-                    .push("\txchg rax, rbx\n".to_string());
-                self.segments.code_main.push("\tcqo\n".to_string());
-                self.segments.code_main.push("\tidiv rbx\n".to_string());
-                self.segments.code_main.push("\tmov rax, rdx\n".to_string());
-            }
-           
-            "\\" => {
-                self.segments
-                    .code_main
-                    .push("\txchg rax, rbx\n".to_string());
-                self.segments.code_main.push("\tcqo\n".to_string());
-                self.segments.code_main.push("\tidiv rbx\n".to_string());
-            }
+                "*" => {
+                    let left = self.current_string.as_ref().unwrap().to_owned();
+
+                    if self.current_string.is_none() {
+                        self.segments
+                            .code_main
+                            .push("\timul rax, rbx\n".to_string());
+                    } else {
+                        let right = self.current_int;
+                        if right > 0 {
+                            self.segments.code_main.push(format!("\tpush {}\n", left));
+                            self.segments.code_main.push(format!("\tpush {}\n", right));
+                            self.segments
+                                .code_main
+                                .push("\ncall __txt_repeater\n".to_string());
+                        } else {
+                            panic!("Cannot multiply string by zero");
+                        }
+                    }
+                }
+                "/" => {
+                    self.segments
+                        .code_main
+                        .push("\txchg rax, rbx\n".to_string());
+                    self.segments.code_main.push("\tcqo\n".to_string());
+                    self.segments.code_main.push("\tidiv rbx\n".to_string());
+                }
+                "%" => {
+                    self.segments
+                        .code_main
+                        .push("\txchg rax, rbx\n".to_string());
+                    self.segments.code_main.push("\tcqo\n".to_string());
+                    self.segments.code_main.push("\tidiv rbx\n".to_string());
+                    self.segments.code_main.push("\tmov rax, rdx\n".to_string());
+                }
+
+                "\\" => {
+                    self.segments
+                        .code_main
+                        .push("\txchg rax, rbx\n".to_string());
+                    self.segments.code_main.push("\tcqo\n".to_string());
+                    self.segments.code_main.push("\tidiv rbx\n".to_string());
+                }
+                _ => (),
             }
         } else {
             self.generate_expr(expr);
@@ -331,20 +362,9 @@ impl<'a> Generator<'a> {
             self.generate_bitwisenot_expr(*exp.right);
 
             if exp.operator.as_str() == "**" {
-                    self.segments.code_main.push("\tmov rcx, rax\n".to_string());
-                    self.segments.code_main.push("\tmov rax, 1\n".to_string());
-                    self.segments
-                        .code_main
-                        .push("\ttest rcx, rcx\n".to_string());
-                    self.segments.code_main.push("\tjz pow_end\n".to_string());
-                    self.segments.code_main.push("pow_loop:\n".to_string());
-                    self.segments
-                        .code_main
-                        .push("\timul rax, rbx\n".to_string());
-                    self.segments
-                        .code_main
-                        .push("\tloop pow_loop\n".to_string());
-                    self.segments.code_main.push("pow_end:\n".to_string());
+                self.segments.code_main.push("\tpush rax\n".to_string());
+                self.segments.code_main.push("\tpush rbx\n".to_string());
+                self.segments.code_main.push("\tcall __pow\n".to_string());
             }
         } else {
             self.generate_expr(expr);
@@ -356,7 +376,7 @@ impl<'a> Generator<'a> {
             self.generate_expr(*exp.operand);
             self.segments.code_main.push("\tnot rax\n".to_string());
         } else {
-            self.generate_expr(expr)
+            self.generate_expr(expr);
         }
     }
 

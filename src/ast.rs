@@ -203,6 +203,7 @@ pub struct Program {
 pub struct UnaryBitwiseNotExpr {
     pub kind: NodeType,
     pub operand: Box<Expr>,
+    pub typ: Option<Datatype>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -272,6 +273,7 @@ pub struct MovStmt {
 pub struct TrueLiteral {
     pub kind: NodeType,
     pub value: String,
+    pub typ: Option<Datatype>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -281,6 +283,7 @@ pub struct TrueLiteral {
 pub struct FalseLiteral {
     pub kind: NodeType,
     pub value: String,
+    pub typ: Option<Datatype>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -326,6 +329,7 @@ pub struct PostDecrementExpr {
 pub struct UnaryMinusExpr {
     pub kind: NodeType,
     pub operand: Box<Expr>,
+    pub typ: Option<Datatype>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -335,6 +339,7 @@ pub struct UnaryMinusExpr {
 pub struct LogicalNotExpr {
     pub kind: NodeType,
     pub operand: Box<Expr>,
+    pub typ: Option<Datatype>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -391,6 +396,7 @@ pub struct ReturnStmt {
 pub struct Identifier {
     pub kind: NodeType,
     pub symbol: String,
+    pub typ: Option<Datatype>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -420,6 +426,7 @@ impl Hash for Identifier {
 pub struct StringLiteral {
     pub kind: NodeType,
     pub value: String,
+    pub typ: Option<Datatype>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -449,6 +456,7 @@ impl Hash for StringLiteral {
 pub struct NullLiteral {
     pub kind: NodeType,
     pub value: &'static str,
+    pub typ: Option<Datatype>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -458,6 +466,7 @@ pub struct NullLiteral {
 pub struct UndefinedLiteral {
     pub kind: NodeType,
     pub value: &'static str,
+    pub typ: Option<Datatype>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -467,6 +476,7 @@ pub struct UndefinedLiteral {
 pub struct NumericLiteral {
     pub kind: NodeType,
     pub value: String,
+    pub typ: Option<Datatype>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -476,6 +486,7 @@ pub struct NumericLiteral {
 pub struct TupleLiteral {
     pub kind: NodeType,
     pub value: Vec<Expr>,
+    pub typ: Option<Datatype>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -495,6 +506,7 @@ pub struct Property {
 pub struct ObjectLiteral {
     pub kind: NodeType,
     pub properties: Vec<Property>,
+    pub typ: Option<Datatype>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -552,6 +564,7 @@ pub struct BinaryExpr {
     pub left: Box<Expr>,
     pub right: Box<Expr>,
     pub operator: String,
+    pub typ: Option<Datatype>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -562,6 +575,7 @@ pub struct MemberExpr {
     pub kind: NodeType,
     pub object: Box<Expr>,
     pub property: Box<Expr>,
+    pub typ: Option<Datatype>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -572,6 +586,7 @@ pub struct CallExpr {
     pub kind: NodeType,
     pub args: Vec<Box<Expr>>,
     pub caller: Box<Expr>,
+    pub typ: Option<Datatype>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -612,6 +627,7 @@ pub struct TernaryExpr {
     pub condition: Box<Expr>,
     pub consequent: Box<Expr>,
     pub alternate: Box<Expr>,
+    pub typ: Option<Datatype>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -639,6 +655,7 @@ pub struct AsmStmt {
 pub struct ArrayExpr {
     pub kind: NodeType,
     pub elements: Vec<Expr>,
+    pub typ: Option<Datatype>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -649,6 +666,7 @@ pub struct ArrayAccess {
     pub kind: NodeType,
     pub array: Box<Expr>,
     pub index: Box<Expr>,
+    pub typ: Option<Datatype>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,

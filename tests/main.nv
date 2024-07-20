@@ -1,3 +1,1 @@
-qword expr: text = "sexo";
-qword txt: text = totxt(expr);
-write(txt);
+write(__txt_repeater("#", 5));

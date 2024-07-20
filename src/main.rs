@@ -48,8 +48,8 @@ fn main() {
 
     let parser: Parser = Parser::new();
     let ast: Program = parser.produce_ast(tokens.clone(), &source_code);
-
-    let mut checker: Checker = Checker::new(ast.clone(), &source_code, &full_path);
+    let mut c_ast = ast.clone();
+    let mut checker: Checker = Checker::new(c_ast, &source_code, &full_path);
     for stmt in ast.clone().body {
         checker.check(stmt);
     }
@@ -57,8 +57,8 @@ fn main() {
     let mut generator: Generator = Generator::new(ast.clone(), &full_path);
     generator.generate();
 
-    let mut compiler: Compiler = Compiler::new(&full_path);
-    compiler.compile();
+    //let mut compiler: Compiler = Compiler::new(&full_path);
+    //compiler.compile();
 
     // println!("{:#?}", ast);
 }

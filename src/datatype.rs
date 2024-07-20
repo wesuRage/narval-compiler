@@ -1,11 +1,12 @@
+use std::fmt;
 use std::hash::{Hash, Hasher};
 #[derive(Debug, Clone)]
 pub enum Datatype {
     Integer,
     Decimal,
-    String,
+    Text,
     Boolean,
-    Undefined,
+    Any,
     Function((Vec<(String, Datatype)>, Box<Datatype>)),
     Object(Box<Datatype>),
     Array(Box<Datatype>),
@@ -13,15 +14,15 @@ pub enum Datatype {
     _Multitype(Vec<Box<Datatype>>),
     _NOTYPE,
 }
-
+//hi guuuya
 impl PartialEq for Datatype {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Datatype::Integer, Datatype::Integer)
             | (Datatype::Decimal, Datatype::Decimal)
-            | (Datatype::String, Datatype::String)
+            | (Datatype::Text, Datatype::Text)
             | (Datatype::Boolean, Datatype::Boolean)
-            | (Datatype::Undefined, Datatype::Undefined)
+            | (Datatype::Any, Datatype::Any)
             | (Datatype::_NOTYPE, Datatype::_NOTYPE) => true,
 
             (Datatype::Function((params1, rettype1)), Datatype::Function((params2, rettype2))) => {
@@ -39,7 +40,71 @@ impl PartialEq for Datatype {
     }
 }
 
-impl Eq for Datatype { }
+impl Eq for Datatype {}
+
+impl fmt::Display for Datatype {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Datatype::Function((params, rettype)) => {
+                write!(f, "label:")?;
+                if params.len() == 0 {
+                    return write!(f, "{}", rettype);
+                };
+                write!(f, "(")?;
+                let mut i = 1;
+                for (name, typ) in params {
+                    if i == params.len() {
+                        write!(f, "{}: {}", name, typ)?;
+                    } else {
+                        write!(f, "{}: {}, ", name, typ)?;
+                    }
+
+                    i = i + 1;
+                }
+                write!(f, "):{}", rettype)
+            }
+            Datatype::_Multitype(types) => {
+                write!(f, "[")?;
+                let mut i = 1;
+                for t in types {
+                    if i == types.len() {
+                        write!(f, "{}", t)?;
+                    } else {
+                        write!(f, "{} | ", t)?;
+                    }
+                }
+                write!(f, "]")
+            }
+            Datatype::Array(ts) => {
+                write!(f, "array<{}>", ts)
+            }
+            Datatype::Tuple(ts) => {
+                write!(f, "(")?;
+                match *ts.clone() {
+                    Datatype::_Multitype(ts2) => {
+                        let mut i = 1;
+                        for t in ts2.clone() {
+                            if i == ts2.len() {
+                                write!(f, "{}", t)?;
+                            } else {
+                                write!(f, "{}, ", t)?;
+                            }
+                            i = i + 1;
+                        }
+                    }
+                    _ => {
+                        write!(f, "{}", ts)?;
+                    }
+                };
+                write!(f, ")")
+            }
+            Datatype::Object(ts) => {
+                write!(f, "object<{}>", ts)
+            }
+            _ => write!(f, "{:?}", self),
+        }
+    }
+}
 
 //CRÉDITOS: ChatGPT modelo 4o
 impl Hash for Datatype {
@@ -47,16 +112,16 @@ impl Hash for Datatype {
         match self {
             Datatype::Integer => state.write_u8(0),
             Datatype::Decimal => state.write_u8(1),
-            Datatype::String => state.write_u8(2),
+            Datatype::Text => state.write_u8(2),
             Datatype::Boolean => state.write_u8(3),
-            Datatype::Undefined => state.write_u8(4),
+            Datatype::Any => state.write_u8(4),
             Datatype::Function((params, rettype)) => {
                 state.write_u8(5);
                 for (name, dt) in params {
                     name.hash(state);
                     dt.hash(state);
                 }
-                rettype.hash(state);
+                (*&rettype).hash(state);
             }
             Datatype::Object(dt) => {
                 state.write_u8(6);
@@ -80,27 +145,32 @@ impl Hash for Datatype {
         }
     }
 }
+
 impl Datatype {
-     pub fn cast(&self, other: Datatype) -> Result<Datatype, String> {
-         match (self, other) {
-             (Datatype::Integer, Datatype::Decimal)
-             | (Datatype::Boolean, Datatype::Decimal)
-             | (Datatype::Decimal, Datatype::Decimal) => Ok(other),
+    pub fn cast(&self, other: &Datatype) -> Result<Datatype, String> {
+        match (self, other) {
+            (Datatype::Integer, Datatype::Decimal)
+            | (Datatype::Boolean, Datatype::Decimal)
+            | (Datatype::Decimal, Datatype::Decimal) => Ok(other.clone()),
 
-             (Datatype::String, Datatype::Array(Box::new(Datatype::Integer)))
-             | (Datatype::Integer, Datatype::Array(Box::new(Datatype::Integer))) => Ok(other),
+            (Datatype::Text, Datatype::Array(boxed_inner))
+            | (Datatype::Integer, Datatype::Array(boxed_inner))
+                if **boxed_inner == Datatype::Integer =>
+            {
+                Ok(other.clone())
+            }
 
-             (Datatype::Boolean, Datatype::Integer) => Ok(other),
+            (Datatype::Boolean, Datatype::Integer) => Ok(other.clone()),
 
-             (Datatype::Integer, Datatype::Boolean)
-             | (Datatype::Decimal, Datatype::Boolean)
-             | (Datatype::String, Datatype::Boolean)
-             | (Datatype::Boolean, Datatype::Boolean) => Ok(other),
+            (Datatype::Integer, Datatype::Boolean)
+            | (Datatype::Decimal, Datatype::Boolean)
+            | (Datatype::Text, Datatype::Boolean)
+            | (Datatype::Boolean, Datatype::Boolean) => Ok(other.clone()),
 
-             (Datatype::Undefined, _) | (Datatype::_NOTYPE, _) => {
-                 Err(format!("Impossible to cast \"null values\" for any type."))
-             }
-             _ => Ok(self.clone()),
-         }
-     }
- }
+            (Datatype::Any, _) | (Datatype::_NOTYPE, _) => {
+                Err(format!("Impossible to cast \"null values\" for any type."))
+            }
+            _ => Ok(self.clone()),
+        }
+    }
+}

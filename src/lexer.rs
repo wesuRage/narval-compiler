@@ -69,7 +69,7 @@ pub enum TokenType {
     Decimal,
     Text,
     Object,
-    UndefinedType,
+    Any,
     Undefined,
     Null,
     Auto,
@@ -94,6 +94,7 @@ pub enum TokenType {
     Import,
     Export,
     If,
+    Elif,
     Else,
     When,
     While,
@@ -158,7 +159,6 @@ impl TokenDefinitions {
         literals.insert("%", TokenType::Mod);
         literals.insert("\\", TokenType::IntegerDiv);
         literals.insert("||", TokenType::Or);
-        literals.insert("_", TokenType::UndefinedType);
         literals.insert("!", TokenType::Exclamation);
         literals.insert("?", TokenType::QuestionMark);
         literals.insert("&&", TokenType::And);
@@ -198,6 +198,7 @@ impl TokenDefinitions {
         keywords.insert("import", TokenType::Import);
         keywords.insert("export", TokenType::Export);
         keywords.insert("if", TokenType::If);
+        keywords.insert("elif", TokenType::Elif);
         keywords.insert("else", TokenType::Else);
         keywords.insert("when", TokenType::When);
         keywords.insert("return", TokenType::Return);
@@ -212,6 +213,7 @@ impl TokenDefinitions {
         keywords.insert("Object", TokenType::Object);
         keywords.insert("auto", TokenType::Auto);
         keywords.insert("text", TokenType::Text);
+        literals.insert("any", TokenType::Any);
         keywords.insert("Array", TokenType::Array);
         keywords.insert("resb", TokenType::Resb);
         keywords.insert("resw", TokenType::Resw);
@@ -449,9 +451,11 @@ impl<'a> Lexer<'a> {
         if let Some(ref code) = self.code {
             if long {
                 // Pula até encontrar o final do comentário de bloco
-                let end_comment: &str = "*/";
-                if let Some(pos) = code[self.endindex..].find(end_comment) {
-                    self.endindex += pos + end_comment.len();
+                while let (Some(c1), Some(c2)) = (self.pick_char(), self.pick_next()) {
+                    if !(c1 == '*' && c2 == '/') {
+                        self.eat_char();
+                    }
+                    self.eat_char();
                 }
             } else {
                 // Pula até encontrar uma quebra de linha
