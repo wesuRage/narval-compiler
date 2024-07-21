@@ -1,4 +1,4 @@
-include "/root/rust/narval/libs/linux.s"
+include "./linux.s"
 
 segment readable writeable
     __TEMP_STRING_BUFFER rb 1024*1024
@@ -7,33 +7,6 @@ segment readable writeable
 
 
 segment readable executable
-;--------------------------------------------------
-munmap:
-    push rbp
-    mov rbp, rsp
-
-    mov rsp, rbp
-    pop rbp
-    ret
-
-;--------------------------------------------------
-mmap:
-    push rbp
-    mov rbp, rsp
-
-    mov rdi, [rsp+56]  ; addr
-    mov rsi, [rsp+48]  ; length
-    mov rdx, [rsp+40]  ; prot
-    mov r10, [rsp+32]  ; flags
-    mov r8,  [rsp+24]  ; fd
-    mov r9,  [rsp+16]  ; offset
-    mov rax, 9
-    syscall
-
-    mov rsp, rbp
-    pop rbp
-    ret
-
 ;--------------------------------------------------
 __txt_repeater:
     push rbp
@@ -135,7 +108,7 @@ read:
     mov rbp, rsp
 
     push qword [rbp+24] 
-    call str_len           ; Chama str_len para calcular o comprimento do buffer
+    call len           ; Chama len para calcular o comprimento do buffer
     mov rdx, rax           ; Move o comprimento do buffer para rdx
 
     ; Parâmetros para a syscall read
@@ -184,7 +157,7 @@ write:
     mov rbp, rsp
 
     push qword [rbp+16]
-    call str_len
+    call len
 
     mov rdi, STD_OUT
     mov rsi, [rbp+16]
@@ -203,7 +176,7 @@ write:
     ret
 
 ;--------------------------------------------------
-str_len:
+len:
     push rbp
     mov rbp, rsp
     push rdi
@@ -226,7 +199,7 @@ str_len:
     ret
 
 ;--------------------------------------------------
-int_to_str:
+totxt:
     push rbp
     mov rbp, rsp
     push rbx
@@ -277,9 +250,10 @@ int_to_str:
     ret
 
 ;--------------------------------------------------
-str_to_int:
+toint:
     push rbp
     mov rbp, rsp
+
 
     mov rdi, [rbp+16]
     xor rcx, rcx           ; Reset signal flag
@@ -298,14 +272,14 @@ str_to_int:
 .loop:
     mov bl, byte [rdi]
     cmp bl, 0
-    je .end_str_to_int
+    je .end_to_int
     sub bl, '0'
     imul rax, rax, 10
     add rax, rbx
     inc rdi
     jmp .loop
 
-.end_str_to_int:
+.end_to_int:
     ; Apply negative sign if necessary
     cmp rcx, 0
     je .no_negative
@@ -322,10 +296,10 @@ starts_with:
     mov rbp, rsp
 
     mov rdi, [rbp+24]  ; text
-    call str_len
+    call len
     mov rsi, rax
     mov rdi, [rbp+16]  ; prefix
-    call str_len
+    call len
     mov r10, rax
     xor rax, rax
     xor rbx, rbx
@@ -350,10 +324,10 @@ starts_with:
     je .yes
 .no:
     xor rax, rax
-    jmp .end_int_to_str
+    jmp .end_totxt
 .yes:
     mov rax, 1
-.end_int_to_str:
+.end_totxt:
     mov rsp, rbp
     pop rbp
     ret

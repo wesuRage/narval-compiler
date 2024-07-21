@@ -1478,7 +1478,16 @@ impl Parser {
         let lineno: usize = self.at().lineno;
 
         self.expect(TokenType::Return, "\"return\" Expected."); // Consome o token "return"
-
+        if self.at().token_type == TokenType::Semicolon {
+            self.eat();
+            return ReturnStmt {
+                kind: NodeType::ReturnStmt,
+                argument: None,
+                column,
+                position,
+                lineno,
+            };
+        }
         // Usa parse_call_member_expr para analisar a expressão de retorno completa
         let expr: Expr = self.parse_call_member_expr();
 

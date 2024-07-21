@@ -1,6 +1,6 @@
 # Compilador da linguagem de programação Narval
 
-Narval é uma linguagem de programação de propósito geral baseada em Assembly x86_64 FASM com sintaxe semelhante a Python e Rust. Apesar de seu propósito geral, contém bibliotecas builtin prontas para Data Science, Big Data, Machine Learning e Deep Learning.
+Narval é uma linguagem de programação de propósito geral baseada em Assembly com a sintaxe semelhante a Python e Rust. Apesar de seu propósito geral, contém bibliotecas builtin prontas para Data Science, Big Data, Machine Learning e Deep Learning. A linguagem atualmente possui suporte para as arquiteturas x86_64 (AMD64) e ARM64 (AArch64)
 
 ## Instalação da fonte
 

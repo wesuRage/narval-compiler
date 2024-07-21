@@ -1,1 +1,6 @@
-write(__txt_repeater("#", 5));
+gozadas: Array<integer> = [1, 2, 3, 4, 5, 5, 6, 7, 8, 9, 10];
+
+label slash(target: qword integer): qword integer {
+    cortado = target / 2;
+    return;
+}

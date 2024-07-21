@@ -1,16 +1,17 @@
 use crate::ast::*;
+use crate::colors::printc;
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::io::Write;
 
 #[derive(Clone)]
-pub struct Generator<'a> {
+pub struct X8664Generator<'a> {
     pub program: Program,
     pub filename: &'a String,
     pub segments: Segments,
     pub assembly: String,
-    pub max_local_value: &'a str,
+    pub max_local_directive: &'a str,
     pub values: HashMap<String, (String, NodeType)>,
     pub strings: HashMap<String, (String, Option<String>)>,
     pub unitialized_strings_counter: usize,
@@ -33,8 +34,8 @@ enum CallerType {
     Str(String),
 }
 
-impl<'a> Generator<'a> {
-    pub fn new(tree: Program, filename: &'a &String) -> Generator<'a> {
+impl<'a> X8664Generator<'a> {
+    pub fn new(tree: Program, filename: &'a String) -> X8664Generator<'a> {
         let segments = Segments {
             data: vec!["segment readable writeable\n".to_string()],
             code_main: vec![
@@ -45,7 +46,7 @@ impl<'a> Generator<'a> {
         };
 
         let assembly: String = String::new();
-        let max_local_value: &str = "db";
+        let max_local_directive: &str = "db";
         let values: HashMap<String, (String, NodeType)> = HashMap::new();
         let strings: HashMap<String, (String, Option<String>)> = HashMap::new();
         let unitialized_strings_counter: usize = 0;
@@ -53,12 +54,12 @@ impl<'a> Generator<'a> {
         let current_string: Option<String> = None;
         let current_int: i32 = 0;
 
-        Generator {
+        X8664Generator {
             program: tree,
             filename,
             segments,
             assembly,
-            max_local_value,
+            max_local_directive,
             values,
             strings,
             unitialized_strings_counter,
@@ -86,13 +87,13 @@ impl<'a> Generator<'a> {
         let narval_home: String = match env::var("NARVAL_HOME") {
             Ok(val) => val,
             Err(_) => {
-                eprintln!("Error: NARVAL_HOME environment variable not set.");
+                printc("Error: \"NARVAL_HOME\" environment variable not set.\nCheck installation on: https://github.com/wesuRage/narval-compiler?tab=readme-ov-file#instala%C3%A7%C3%A3o-da-fonte");
                 return;
             }
         };
 
         self.assembly
-            .push_str(format!("include \"{}/libs/standard.s\"\n", narval_home).as_str());
+            .push_str(format!("include \"{}/libs/x86_64/standard.s\"\n", narval_home).as_str());
         self.assembly.push_str("\n");
 
         for code in &self.segments.data {

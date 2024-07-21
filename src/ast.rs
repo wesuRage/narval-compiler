@@ -51,6 +51,7 @@ pub enum NodeType {
     UnaryMinusExpr,
     UnaryBitwiseNotExpr,
     RangeExpr,
+    ENDFUNC,
 }
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -97,6 +98,7 @@ pub enum Expr {
     PostDecrementExpr(PostDecrementExpr),
     RangeExpr(Box<RangeExpr>),
     UnaryBitwiseNotExpr(UnaryBitwiseNotExpr),
+    _ENDFUNCTION(Vec<(String, Datatype)>, Datatype),
 }
 
 // Implementação de métodos para a enumeração Expr
@@ -145,6 +147,7 @@ impl Expr {
             Expr::UnitVarDeclaration(_) => NodeType::UnitVarDeclaration, // Se for uma declaração de variável dentro de uma unit
             Expr::VarDeclaration(_) => NodeType::VarDeclaration, // Se for uma declaração de variável
             Expr::WhileStmt(_) => NodeType::WhileStmt,           // Se for um while statement
+            Expr::_ENDFUNCTION(..) => NodeType::ENDFUNC,
         }
     }
 
@@ -190,6 +193,7 @@ impl Expr {
             Expr::UnitVarDeclaration(e) => (e.position, e.column, e.lineno), // Se for uma declaração de variável dentro de uma unit
             Expr::VarDeclaration(e) => (e.position, e.column, e.lineno), // Se for uma declaração de variável
             Expr::WhileStmt(e) => (e.position, e.column, e.lineno),
+            Expr::_ENDFUNCTION(..) => ((0, 0), (0, 0), 0),
         }
     }
 }

@@ -14,7 +14,7 @@ pub enum Datatype {
     _Multitype(Vec<Box<Datatype>>),
     _NOTYPE,
 }
-//hi guuuya
+
 impl PartialEq for Datatype {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -29,11 +29,11 @@ impl PartialEq for Datatype {
                 // Check if params and return type are equal
                 params1 == params2 && rettype1 == rettype2
             }
+            (Datatype::_Multitype(a), Datatype::_Multitype(b)) => a == b,
 
-            (Datatype::Object(_), Datatype::Object(_))
-            | (Datatype::Array(_), Datatype::Array(_))
-            | (Datatype::Tuple(_), Datatype::Tuple(_))
-            | (Datatype::_Multitype(_), Datatype::_Multitype(_)) => true,
+            (Datatype::Object(a), Datatype::Object(b)) => a == b,
+            (Datatype::Array(a), Datatype::Array(b)) => a == b,
+            (Datatype::Tuple(a), Datatype::Tuple(b)) => a == b,
             // Default case for inequality
             _ => false,
         }
@@ -65,7 +65,7 @@ impl fmt::Display for Datatype {
             }
             Datatype::_Multitype(types) => {
                 write!(f, "[")?;
-                let mut i = 1;
+                let i = 1;
                 for t in types {
                     if i == types.len() {
                         write!(f, "{}", t)?;
@@ -76,7 +76,7 @@ impl fmt::Display for Datatype {
                 write!(f, "]")
             }
             Datatype::Array(ts) => {
-                write!(f, "array<{}>", ts)
+                write!(f, "Array<{}>", ts)
             }
             Datatype::Tuple(ts) => {
                 write!(f, "(")?;
@@ -99,7 +99,7 @@ impl fmt::Display for Datatype {
                 write!(f, ")")
             }
             Datatype::Object(ts) => {
-                write!(f, "object<{}>", ts)
+                write!(f, "Object<{}>", ts)
             }
             _ => write!(f, "{:?}", self),
         }

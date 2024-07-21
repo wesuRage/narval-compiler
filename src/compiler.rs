@@ -2,41 +2,46 @@ use std::process::Command;
 
 pub struct Compiler<'a> {
     pub filename: &'a String,
+    pub output_file: Option<String>,
 }
 
 impl<'a> Compiler<'a> {
-    pub fn new(filename: &'a String) -> Compiler {
-        Compiler { filename }
+    pub fn new(filename: &'a String, output_file: Option<String>) -> Compiler {
+        Compiler {
+            filename,
+            output_file,
+        }
     }
 
     pub fn compile(&mut self) {
         let mut file_name: String = self.filename.split("/").last().unwrap().to_owned();
         if file_name.contains(".") {
-            file_name = file_name.clone().split(".").next().unwrap().to_owned() + ".asm";
+            file_name = file_name.split(".").next().unwrap().to_owned() + ".asm";
         } else {
-            file_name = file_name.clone().to_owned() + ".asm";
+            file_name = file_name.clone() + ".asm";
         }
 
-        if self.filename.contains(".") {
-            Command::new("/bin/fasm")
-                .arg(&file_name)
-                .output()
-                .expect("Error while compiling assembly file");
+        let mut fasm_command = Command::new("/bin/fasm");
 
-            // Command::new("/bin/rm")
-            //     .arg(file_name)
-            //     .output()
-            //     .expect("Error while removing assembly file");
+        if let Some(ref output_file) = self.output_file {
+            if output_file != self.filename {
+                fasm_command
+                    .arg(&file_name)
+                    .arg(format!("-o {}", output_file));
+            } else {
+                fasm_command.arg(&file_name);
+            }
         } else {
-            Command::new("/bin/fasm")
-                .arg(format!("{}.asm -o {}.o", self.filename, self.filename))
-                .output()
-                .expect("Error while compiling assembly file");
-
-            // Command::new("/bin/rm")
-            //     .arg(file_name)
-            //     .output()
-            //     .expect("Error while removing assembly file");
+            fasm_command.arg(&file_name);
         }
+
+        fasm_command
+            .output()
+            .expect("Error while compiling assembly file");
+
+        // Command::new("/bin/rm")
+        //     .arg(file_name)
+        //     .output()
+        //     .expect("Error while removing assembly file");
     }
 }

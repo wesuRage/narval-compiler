@@ -83,7 +83,7 @@ pub struct Checker<'a> {
 type Dt = Option<Datatype>;
 
 impl<'a> Checker<'a> {
-    pub fn new(tree: Program, source_code: &str, filename: &'a &String) -> Checker<'a> {
+    pub fn new(tree: Program, source_code: &str, filename: &'a String) -> Checker<'a> {
         let mut nss: Vec<Namespace> = Vec::new();
         nss.push(Namespace::new());
         let mut bodies: Vec<(i32, Dt, Vec<Stmt>)> = Vec::new();
@@ -102,6 +102,42 @@ impl<'a> Checker<'a> {
     }
 
     pub fn check(&mut self, stmt: Stmt) -> Dt {
+        if let Some(ret) = stmt.return_stmt {
+            if self.current_body.0 == 0 {
+                self.error_wdata(
+                    (ret.position, ret.column, ret.lineno),
+                    "Can not have return statments at global scope.",
+                );
+                return Some(Any);
+            }
+            if let Some(value) = ret.argument {
+                let dt = self.check(self.expr2stmt(value.clone()));
+
+                if let (Some(fdt), Some(rdt)) = (self.current_body.1.clone(), dt) {
+                    if rdt != fdt {
+                        self.error(
+                            value,
+                            format!("Expected a value of type {} here, but found {}", fdt, rdt)
+                                .as_str(),
+                        );
+                    }
+                }
+            } else {
+                println!("AQUIIII");
+                println!("FUNCIONA");
+                if let Some(fdt) = self.current_body.1.clone() {
+                    if fdt != Any {
+                        self.error_wdata(
+                            (ret.position, ret.column, ret.lineno),
+                            "PUT SOMETHING HERE, THE FUNCTION REQUIRES SOME VALUE, RIGHT?",
+                        );
+                        return Some(Any);
+                    }
+                }
+            }
+
+            return Some(Any);
+        }
         match stmt.expr {
             Some(Expr::Identifier(id)) => self.check_id(id),
             Some(Expr::NullLiteral(_)) => Some(Any),
@@ -112,20 +148,15 @@ impl<'a> Checker<'a> {
             Some(Expr::VarDeclaration(decl)) => self.check_newvar(decl),
             Some(Expr::AssignmentExpr(expr)) => self.check_setvar(expr),
             Some(Expr::BinaryExpr(expr)) => self.check_binop(expr),
+            Some(Expr::ArrayExpr(expr)) => self.check_array(expr),
+            Some(Expr::FunctionDeclaration(decl)) => self.check_label(decl),
+            Some(Expr::_ENDFUNCTION(..)) => self.finalize_check_label(),
             _ => Some(Any),
         }
     }
 
-    pub fn check_body(&mut self) {
-        for stmt in self.current_body.2.clone() {
-            self.check(stmt);
-        }
-    }
-
-    fn error(&mut self, node: Expr, message: &str) {
-        let nd: &Expr = &node;
+    fn error_wdata(&mut self, data: ((usize, usize), (usize, usize), usize), message: &str) {
         let filename: &String = &self.filename;
-        let data: ((usize, usize), (usize, usize), usize) = nd.local();
         let column: (usize, usize) = data.1;
         let lineno: usize = data.2;
         let line: &String = &self.lines.as_ref().unwrap()[lineno - 1];
@@ -145,6 +176,9 @@ impl<'a> Checker<'a> {
             column_repr,
         );
         printc(&formatted_message);
+    }
+    fn error(&mut self, node: Expr, message: &str) {
+        self.error_wdata(node.local(), message);
     }
 
     fn check_id(&mut self, expr: Identifier) -> Dt {
@@ -377,5 +411,83 @@ impl<'a> Checker<'a> {
         } else {
             return Some(Any);
         }
+    }
+
+    fn check_array(&mut self, expr: ArrayExpr) -> Dt {
+        let mut types: Vec<Datatype> = Vec::new();
+
+        for e in &expr.elements {
+            let dt: Option<Datatype> = self.check(self.expr2stmt(e.clone())).clone();
+            if !(types.contains(&dt.clone()?)) {
+                types.push(dt.clone()?);
+            }
+        }
+
+        if types.len() == 1 {
+            return Some(Array(Box::new(types[0].clone())));
+        } else {
+            self.error(Expr::ArrayExpr(expr), "Arrays can't be multitype!");
+            Some(Any)
+        }
+    }
+
+    fn pushbody(
+        &mut self,
+        body: &mut Vec<Stmt>,
+        params: &Vec<(String, Datatype)>,
+        rettype: Datatype,
+    ) {
+        self.func_id += 1;
+        body.push(self.expr2stmt(Expr::_ENDFUNCTION(params.to_vec(), rettype.clone())));
+        self.bodies
+            .push((self.func_id, Some(rettype), body.to_vec()));
+        self.current_body = self.bodies[self.bodies.len() - 1].clone();
+    }
+
+    fn popbody(&mut self) {
+        self.func_id -= 1;
+        self.bodies.remove(self.bodies.len() - 1);
+        self.current_body = self.bodies[self.bodies.len() - 1].clone();
+    }
+
+    fn pushns(&mut self) {
+        self.namespaces
+            .push(Namespace::new_inheriting(Some(Rc::new(RefCell::new(
+                self.namespaces[self.namespaces.len() - 1].clone(),
+            )))));
+        self.namespace = self.namespaces[self.namespaces.len() - 1].clone();
+    }
+
+    fn popns(&mut self) {
+        self.namespaces.remove(self.namespaces.len() - 1);
+        self.namespace = self.namespaces[self.namespaces.len() - 1].clone();
+    }
+
+    fn check_label(&mut self, declt: Box<FunctionDeclaration>) -> Dt {
+        let decl = *declt;
+        let mut params: Vec<(String, Datatype)> = Vec::new();
+        let mut body = decl.body;
+        for (_size, t, name) in decl.parameters {
+            params.push((name, t));
+        }
+        let ft = Some(Function((
+            params.clone(),
+            Box::new(decl.return_type.clone()),
+        )));
+        self.newvar(decl.name, ft.clone(), true);
+        self.pushbody(&mut body, &params, decl.return_type.clone());
+        self.pushns();
+
+        for (name, t) in params.clone() {
+            self.namespace.newvar(name, t, false);
+        }
+
+        return ft.clone();
+    }
+
+    fn finalize_check_label(&mut self) -> Dt {
+        self.popbody();
+        self.popns();
+        Some(Any)
     }
 }
