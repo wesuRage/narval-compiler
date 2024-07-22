@@ -63,6 +63,7 @@ __pow:
     mov rsp, rbp
     pop rbp
     ret
+    
 ;--------------------------------------------------
 clear:
     push rbp
@@ -108,11 +109,10 @@ read:
     mov rbp, rsp
 
     push qword [rbp+24] 
-    call len           ; Chama len para calcular o comprimento do buffer
-    mov rdx, rax           ; Move o comprimento do buffer para rdx
+    call len
+    mov rdx, rax
 
-    ; Parâmetros para a syscall read
-    mov rdi, STD_IN        ; file descriptor (stdin)
+    mov rdi, STD_IN
     mov rsi, [rbp+16]
     mov rax, SYS_read
     syscall
