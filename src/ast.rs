@@ -258,7 +258,8 @@ pub struct UnitVarDeclaration {
 #[derive(Debug, Clone)]
 pub struct Enum {
     pub kind: NodeType,
-    pub var: Vec<Identifier>,
+    pub name: String,
+    pub items: Vec<(String, i32)>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -608,7 +609,7 @@ pub struct ImportStmt {
 #[derive(Debug, Clone)]
 pub struct ExportStmt {
     pub kind: NodeType,
-    pub identifiers: Vec<Identifier>,
+    pub statement: Box<Stmt>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
