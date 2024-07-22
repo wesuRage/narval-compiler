@@ -3,115 +3,104 @@ use std::collections::HashMap;
 // Definição dos tipos de token suportados
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenType {
-    // Tokens para delimitadores
-    OParen,
-    CParen,
-    OBrace,
-    CBrace,
-    OBracket,
-    CBracket,
-    Comma,
-    Dot,
-    Colon,
-    Semicolon,
-    // Tokens para operadores
-    Equals,
-    NotEquals,
-    GreaterThan,
-    GreaterThanOrEqual,
-    LessThan,
-    LessThanOrEqual,
-    Minus,
-    Plus,
-    Div,
-    Mul,
-    Power,
-    Mod,
-    IntegerDiv,
+    And,
+    Any,
+    Array,
+    As,
+    Asm,
+    Attribution,
+    Auto,
+    BitwiseAnd,
+    BitwiseAndEq,
     BitwiseNot,
     BitwiseOr,
-    BitwiseXor,
-    BitwiseAnd,
-    ShiftLeft,
-    ShiftRight,
-    PlusEq,
-    MinusEq,
-    MulEq,
-    PowerEq,
-    DivEq,
-    IntegerDivEq,
-    ModEq,
-    BitwiseXorEq,
     BitwiseOrEq,
-    BitwiseAndEq,
-    ShiftLeftEq,
-    ShiftRightEq,
-    // Tokens para comentários
-    Comment,
-    OComment,
-    CComment,
-    // Outros tokens comuns
-    As,
-    Unit,
-    Exclamation,
-    QuestionMark,
-    And,
-    Asm,
-    Mov,
-    Increment,
-    Decrement,
-    Range,
-    RangeInclusive,
-    // Tokens para tipos de dados e palavras-chave
-    Array,
+    BitwiseXor,
+    BitwiseXorEq,
     Bool,
-    Integer,
-    Decimal,
-    Text,
-    Object,
-    Any,
-    Undefined,
-    Null,
-    Auto,
-    // Tokens para diretivas
-    Resb,
-    Resw,
-    Resd,
-    Resq,
+    Break,
     Byte,
-    Word,
+    CBrace,
+    CBracket,
+    CComment,
+    Colon,
+    Comma,
+    Comment,
+    Continue,
+    CParen,
+    Decimal,
+    Decrement,
+    Div,
+    DivEq,
+    Dot,
     Dword,
-    Qword,
-    Label,
-    // Tokens para literais e identificadores
-    Number,
-    Identifier,
-    String,
-    // Tokens para construções de controle
-    Or,
-    Attribution,
-    Return,
-    Import,
-    Export,
-    If,
     Elif,
     Else,
-    When,
-    While,
-    Break,
-    True,
+    Enum,
+    Eof,
+    Equals,
+    Exclamation,
+    Export,
     False,
-    Continue,
-    Loop,
     For,
-    // Tokens para modificadores de acesso
+    GreaterThan,
+    GreaterThanOrEqual,
+    Identifier,
+    If,
+    Import,
+    Increment,
+    Integer,
+    IntegerDiv,
+    IntegerDivEq,
+    Label,
+    LessThan,
+    LessThanOrEqual,
+    Loop,
+    Minus,
+    MinusEq,
+    Mod,
+    ModEq,
+    Mov,
+    Mul,
+    MulEq,
+    NotEquals,
+    Null,
+    Number,
+    OBrace,
+    OBracket,
+    OComment,
+    Object,
+    OParen,
+    Or,
+    Plus,
+    PlusEq,
+    Power,
+    PowerEq,
     Private,
     Public,
-    // Token pra declarar constantes
+    QuestionMark,
+    Qword,
+    Range,
+    RangeInclusive,
+    Resb,
+    Resd,
+    Resq,
+    Resw,
+    Return,
+    Semicolon,
+    ShiftLeft,
+    ShiftLeftEq,
+    ShiftRight,
+    ShiftRightEq,
+    String,
+    Text,
+    True,
+    Undefined,
+    Unit,
     Val,
-    // Token especial para marcação de final de arquivo
-    Eof,
-    // Token especial para representar um caractere inválido
+    When,
+    While,
+    Word,
     _Invalid,
 }
 
@@ -129,102 +118,102 @@ impl TokenDefinitions {
 
         // Preenchimento dos mapas com literais e palavras-chave associados aos tipos de token correspondentes
         // Delimitadores
-        literals.insert("(", TokenType::OParen);
-        literals.insert(")", TokenType::CParen);
-        literals.insert("{", TokenType::OBrace);
-        literals.insert("}", TokenType::CBrace);
-        literals.insert("[", TokenType::OBracket);
-        literals.insert("]", TokenType::CBracket);
+        literals.insert("=", TokenType::Attribution);
+        literals.insert("&", TokenType::BitwiseAnd);
+        literals.insert("&=", TokenType::BitwiseAndEq);
+        literals.insert("|", TokenType::BitwiseOr);
+        literals.insert("|=", TokenType::BitwiseOrEq);
+        literals.insert("~", TokenType::BitwiseNot);
+        literals.insert("^", TokenType::BitwiseXor);
+        literals.insert("^=", TokenType::BitwiseXorEq);
+        literals.insert("//", TokenType::Comment);
         literals.insert(",", TokenType::Comma);
-        literals.insert("..=", TokenType::RangeInclusive);
-        literals.insert("..", TokenType::Range);
-        literals.insert(".", TokenType::Dot);
         literals.insert(":", TokenType::Colon);
-        literals.insert(";", TokenType::Semicolon);
-        // Operadores
+        literals.insert("*/", TokenType::CComment);
+        literals.insert("}", TokenType::CBrace);
+        literals.insert("]", TokenType::CBracket);
+        literals.insert(")", TokenType::CParen);
+        literals.insert("/", TokenType::Div);
+        literals.insert("/=", TokenType::DivEq);
+        literals.insert(".", TokenType::Dot);
         literals.insert("==", TokenType::Equals);
-        literals.insert("!=", TokenType::NotEquals);
+        literals.insert("!", TokenType::Exclamation);
         literals.insert(">", TokenType::GreaterThan);
         literals.insert(">=", TokenType::GreaterThanOrEqual);
-        literals.insert("<", TokenType::LessThan);
-        literals.insert("<=", TokenType::LessThanOrEqual);
-        literals.insert("-", TokenType::Minus);
-        literals.insert("//", TokenType::Comment);
-        literals.insert("/*", TokenType::OComment);
-        literals.insert("*/", TokenType::CComment);
-        literals.insert("+", TokenType::Plus);
-        literals.insert("/", TokenType::Div);
-        literals.insert("*", TokenType::Mul);
-        literals.insert("**", TokenType::Power);
-        literals.insert("%", TokenType::Mod);
         literals.insert("\\", TokenType::IntegerDiv);
-        literals.insert("||", TokenType::Or);
-        literals.insert("!", TokenType::Exclamation);
-        literals.insert("?", TokenType::QuestionMark);
-        literals.insert("&&", TokenType::And);
-        literals.insert("=", TokenType::Attribution);
-        literals.insert("+=", TokenType::PlusEq);
-        literals.insert("-=", TokenType::MinusEq);
-        literals.insert("*=", TokenType::MulEq);
-        literals.insert("**=", TokenType::PowerEq);
-        literals.insert("/=", TokenType::DivEq);
         literals.insert("\\=", TokenType::IntegerDivEq);
-        literals.insert("%=", TokenType::ModEq);
-        literals.insert("^=", TokenType::BitwiseXorEq);
-        literals.insert("|=", TokenType::BitwiseOrEq);
-        literals.insert("&=", TokenType::BitwiseAndEq);
         literals.insert("++", TokenType::Increment);
         literals.insert("--", TokenType::Decrement);
-        literals.insert("|", TokenType::BitwiseOr);
-        literals.insert("^", TokenType::BitwiseXor);
-        literals.insert("&", TokenType::BitwiseAnd);
-        literals.insert("~", TokenType::BitwiseNot);
+        literals.insert("..", TokenType::Range);
+        literals.insert("..=", TokenType::RangeInclusive);
+        literals.insert("{", TokenType::OBrace);
+        literals.insert("[", TokenType::OBracket);
+        literals.insert("/*", TokenType::OComment);
+        literals.insert("(", TokenType::OParen);
+        literals.insert("||", TokenType::Or);
+        literals.insert("+", TokenType::Plus);
+        literals.insert("+=", TokenType::PlusEq);
+        literals.insert("-", TokenType::Minus);
+        literals.insert("-=", TokenType::MinusEq);
+        literals.insert("%", TokenType::Mod);
+        literals.insert("%=", TokenType::ModEq);
+        literals.insert("*", TokenType::Mul);
+        literals.insert("*=", TokenType::MulEq);
+        literals.insert("!=", TokenType::NotEquals);
+        literals.insert("?", TokenType::QuestionMark);
+        literals.insert(";", TokenType::Semicolon);
         literals.insert("<<", TokenType::ShiftLeft);
         literals.insert("<<=", TokenType::ShiftLeftEq);
         literals.insert(">>", TokenType::ShiftRight);
         literals.insert(">>=", TokenType::ShiftRightEq);
+        literals.insert("<", TokenType::LessThan);
+        literals.insert("<=", TokenType::LessThanOrEqual);
+        literals.insert("**", TokenType::Power);
+        literals.insert("**=", TokenType::PowerEq);
+        literals.insert("&&", TokenType::And);
 
-        // Tipos de dados e palavras-chave
-        keywords.insert("loop", TokenType::Loop);
-        keywords.insert("for", TokenType::For);
-        keywords.insert("while", TokenType::While);
-        keywords.insert("unit", TokenType::Unit);
+        keywords.insert("Array", TokenType::Array);
+        keywords.insert("any", TokenType::Any);
         keywords.insert("as", TokenType::As);
         keywords.insert("asm", TokenType::Asm);
-        keywords.insert("mov", TokenType::Mov);
-        keywords.insert("private", TokenType::Private);
-        keywords.insert("public", TokenType::Public);
-        keywords.insert("undefined", TokenType::Undefined);
-        keywords.insert("import", TokenType::Import);
-        keywords.insert("export", TokenType::Export);
-        keywords.insert("if", TokenType::If);
+        keywords.insert("auto", TokenType::Auto);
+        keywords.insert("boolean", TokenType::Bool);
+        keywords.insert("break", TokenType::Break);
+        keywords.insert("byte", TokenType::Byte);
+        keywords.insert("continue", TokenType::Continue);
+        keywords.insert("decimal", TokenType::Decimal);
+        keywords.insert("dword", TokenType::Dword);
         keywords.insert("elif", TokenType::Elif);
         keywords.insert("else", TokenType::Else);
-        keywords.insert("when", TokenType::When);
-        keywords.insert("return", TokenType::Return);
-        keywords.insert("break", TokenType::Break);
-        keywords.insert("continue", TokenType::Continue);
-        keywords.insert("true", TokenType::True);
+        keywords.insert("enum", TokenType::Enum);
+        keywords.insert("export", TokenType::Export);
         keywords.insert("false", TokenType::False);
-        keywords.insert("null", TokenType::Null);
-        keywords.insert("boolean", TokenType::Bool);
+        keywords.insert("for", TokenType::For);
+        keywords.insert("if", TokenType::If);
+        keywords.insert("import", TokenType::Import);
         keywords.insert("integer", TokenType::Integer);
-        keywords.insert("decimal", TokenType::Decimal);
+        keywords.insert("label", TokenType::Label);
+        keywords.insert("loop", TokenType::Loop);
+        keywords.insert("mov", TokenType::Mov);
+        keywords.insert("null", TokenType::Null);
         keywords.insert("Object", TokenType::Object);
-        keywords.insert("auto", TokenType::Auto);
-        keywords.insert("text", TokenType::Text);
-        literals.insert("any", TokenType::Any);
-        keywords.insert("Array", TokenType::Array);
+        keywords.insert("private", TokenType::Private);
+        keywords.insert("public", TokenType::Public);
+        keywords.insert("qword", TokenType::Qword);
         keywords.insert("resb", TokenType::Resb);
-        keywords.insert("resw", TokenType::Resw);
         keywords.insert("resd", TokenType::Resd);
         keywords.insert("resq", TokenType::Resq);
-        keywords.insert("byte", TokenType::Byte);
-        keywords.insert("word", TokenType::Word);
-        keywords.insert("dword", TokenType::Dword);
-        keywords.insert("qword", TokenType::Qword);
-        keywords.insert("label", TokenType::Label);
+        keywords.insert("resw", TokenType::Resw);
+        keywords.insert("return", TokenType::Return);
+        keywords.insert("text", TokenType::Text);
+        keywords.insert("true", TokenType::True);
+        keywords.insert("undefined", TokenType::Undefined);
+        keywords.insert("unit", TokenType::Unit);
         keywords.insert("val", TokenType::Val);
+        keywords.insert("when", TokenType::When);
+        keywords.insert("while", TokenType::While);
+        keywords.insert("word", TokenType::Word);
+
         TokenDefinitions { literals, keywords }
     }
 }
