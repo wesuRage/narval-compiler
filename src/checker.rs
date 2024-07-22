@@ -78,6 +78,7 @@ pub struct Checker<'a> {
     pub namespaces: Vec<Namespace>,
     pub namespace: Namespace,
     pub lines: Option<Vec<String>>,
+    pub current_node: Option<Expr>,
 }
 
 type Dt = Option<Datatype>;
@@ -98,10 +99,25 @@ impl<'a> Checker<'a> {
             namespaces: nss.clone(),
             namespace: nss[0].clone(),
             lines: Some(source_code.split('\n').map(String::from).collect()),
+            current_node: None,
         }
     }
 
-    pub fn check(&mut self, stmt: Stmt) -> Dt {
+    pub fn push_node(&mut self, node: Expr) {
+        if let Some(_) = self.current_node {
+            panic!("Current node field is busy.");
+        }
+        self.current_node = Some(node);
+    }
+
+    pub fn pop_node(&mut self) {
+        if self.current_node.is_none() {
+            panic!("Current node field is empty.");
+        }
+        self.current_node = None;
+    }
+
+    pub fn check(&mut self, mut stmt: Stmt) -> Dt {
         if let Some(ret) = stmt.return_stmt {
             if self.current_body.0 == 0 {
                 self.error_wdata(
@@ -123,13 +139,12 @@ impl<'a> Checker<'a> {
                     }
                 }
             } else {
-                println!("AQUIIII");
-                println!("FUNCIONA");
                 if let Some(fdt) = self.current_body.1.clone() {
                     if fdt != Any {
                         self.error_wdata(
+                            //voltei
                             (ret.position, ret.column, ret.lineno),
-                            "PUT SOMETHING HERE, THE FUNCTION REQUIRES SOME VALUE, RIGHT?",
+                            "Expected no value here, but found one value.",
                         );
                         return Some(Any);
                     }
@@ -144,13 +159,15 @@ impl<'a> Checker<'a> {
             Some(Expr::NumericLiteral(_)) => Some(Integer),
             Some(Expr::StringLiteral(_)) => Some(Text),
             Some(Expr::TrueLiteral(_)) | Some(Expr::FalseLiteral(_)) => Some(Boolean),
-            Some(Expr::ObjectLiteral(object)) => self.check_object(object),
+            Some(Expr::ObjectLiteral(ref mut object)) => self.check_object(object),
             Some(Expr::VarDeclaration(decl)) => self.check_newvar(decl),
             Some(Expr::AssignmentExpr(expr)) => self.check_setvar(expr),
-            Some(Expr::BinaryExpr(expr)) => self.check_binop(expr),
+            Some(Expr::BinaryExpr(ref mut expr)) => self.check_binop(expr),
             Some(Expr::ArrayExpr(expr)) => self.check_array(expr),
             Some(Expr::FunctionDeclaration(decl)) => self.check_label(decl),
             Some(Expr::_ENDFUNCTION(..)) => self.finalize_check_label(),
+            Some(Expr::IfStmt(stmt)) => self.check_if(stmt),
+
             _ => Some(Any),
         }
     }
@@ -159,6 +176,7 @@ impl<'a> Checker<'a> {
         let filename: &String = &self.filename;
         let column: (usize, usize) = data.1;
         let lineno: usize = data.2;
+        let lineshift = " ".repeat(3 + (lineno.to_string().len()));
         let line: &String = &self.lines.as_ref().unwrap()[lineno - 1];
         let column_repr: String = format!(
             "{}{}",
@@ -166,13 +184,15 @@ impl<'a> Checker<'a> {
             "^".repeat(data.1 .1 - data.1 .0)
         );
         let formatted_message: String = format!(
-            "%%b{}%%!:%%y{}%%!:%%y{}%%!:\n%%r{} %%y{}%%!\n\t{}\n\t%%r{}%%!",
+            "%%b{}%%!:%%y{}%%!:%%y{}%%!:\n%%r{} %%y{}%%!\n\t{} | {}\n\t{}%%r{}%%!",
             filename,
             lineno,
             column.0,
             "ERROR:",
             message,
+            lineno,
             escape(line),
+            lineshift,
             column_repr,
         );
         printc(&formatted_message);
@@ -224,10 +244,10 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn check_object(&mut self, expr: ObjectLiteral) -> Dt {
+    fn check_object(&mut self, expr: &mut ObjectLiteral) -> Dt {
         let mut types: Vec<Datatype> = Vec::new();
 
-        for prop in expr.properties {
+        for prop in expr.properties.clone() {
             let key: String = prop.key;
             let value: Option<Box<Expr>> = prop.value;
             if let Some(v) = value {
@@ -246,7 +266,7 @@ impl<'a> Checker<'a> {
 
         return if types.len() == 1 {
             let r = Some(Object(Box::new(types[0].clone())));
-
+            expr.typ = r.clone();
             return r;
         } else {
             Some(Any)
@@ -304,12 +324,11 @@ impl<'a> Checker<'a> {
         None
     }
 
-    fn check_binop(&mut self, expr: BinaryExpr) -> Dt {
+    fn check_binop(&mut self, expr: &mut BinaryExpr) -> Dt {
         let left: Option<Datatype> = self.check(self.expr2stmt(*expr.left.clone()));
         let right: Option<Datatype> = self.check(self.expr2stmt(*expr.right.clone()));
 
         if let (Some(l), Some(r)) = (left, right) {
-            //TODO: checar operadores com graça, elegância, extravagância e tesão
             let op = expr.operator.as_str();
             match op {
                 "+" | "-" | "\\" | "/" | "**" => {
@@ -347,7 +366,12 @@ impl<'a> Checker<'a> {
                     let casted = l.cast(&r);
 
                     match casted {
-                        Ok(dt) => Some(dt),
+                        Ok(dt) => {
+                            let wrapped: Expr = Expr::BinaryExpr(expr.clone());
+                            self.push_node(wrapped);
+                            expr.typ = Some(dt.clone());
+                            Some(dt)
+                        }
                         Err(err) => {
                             self.error(Expr::BinaryExpr(expr.clone()), err.as_str());
                             Some(Any)
@@ -406,7 +430,50 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
-                _ => Some(Any),
+                "==" | "!=" => Some(Boolean),
+                ">" | "<" | ">=" | "<=" => {
+                    let isntnum_l = !(l == Integer || l == Decimal);
+                    let isntnum_r = !(r == Integer || r == Decimal);
+
+                    if isntnum_l && !isntnum_r {
+                        self.error(
+                            *expr.left.clone(),
+                            format!(
+                                "Attempting to use non-numerical types in \"{}\" comparison operation.",
+                                op
+                            )
+                            .as_str(),
+                        );
+                    } else if !isntnum_l && isntnum_r {
+                        self.error(
+                            *expr.right.clone(),
+                            format!(
+                                "Attempting to use non-numerical types in \"{}\" comparison operation.",
+                                op
+                            )
+                            .as_str(),
+                        );
+                    } else if isntnum_l && isntnum_r {
+                        self.error(
+                            Expr::BinaryExpr(expr.clone()),
+                            format!(
+                                "Attempting to use non-numerical types in \"{}\" comparison operation.",
+                                op
+                            )
+                            .as_str(),
+                        )
+                    }
+                    let casted = l.cast(&r);
+
+                    match casted {
+                        Ok(_) => Some(Boolean),
+                        Err(err) => {
+                            self.error(Expr::BinaryExpr(expr.clone()), err.as_str());
+                            Some(Any)
+                        }
+                    }
+                }
+                _ => Some(Boolean),
             }
         } else {
             return Some(Any);
@@ -479,7 +546,7 @@ impl<'a> Checker<'a> {
         self.pushns();
 
         for (name, t) in params.clone() {
-            self.namespace.newvar(name, t, false);
+            self.namespace.newvar(name, t, false).ok();
         }
 
         return ft.clone();
@@ -488,6 +555,41 @@ impl<'a> Checker<'a> {
     fn finalize_check_label(&mut self) -> Dt {
         self.popbody();
         self.popns();
+        Some(Any)
+    }
+
+    fn check_if(&mut self, stat: Box<IfStmt>) -> Dt {
+        let stmt: IfStmt = *stat;
+
+        let dt: Datatype = self.check(self.expr2stmt(*stmt.test.clone())).unwrap();
+
+        match dt.cast(&Boolean) {
+            Ok(casted) => {
+                if casted != Boolean {
+                    self.error(
+                        *stmt.test,
+                        "If's test expressions must to be boolean expressions.",
+                    );
+                }
+            }
+            Err(error) => {
+                self.error(*stmt.test, &error.as_str());
+            }
+        }
+
+        self.pushns();
+        for s in stmt.consequent {
+            self.check(s);
+        }
+        self.popns();
+        if let Some(alt) = stmt.alternate {
+            self.pushns();
+            for s in alt {
+                self.check(s);
+            }
+            self.popns();
+        }
+
         Some(Any)
     }
 }
