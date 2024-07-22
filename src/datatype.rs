@@ -11,7 +11,10 @@ pub enum Datatype {
     Object(Box<Datatype>),
     Array(Box<Datatype>),
     Tuple(Box<Datatype>),
+    Enum(String, Vec<(String, i32)>),
+    EnumMember(Box<Datatype>, String),
     _Multitype(Vec<Box<Datatype>>),
+
     _NOTYPE,
 }
 
@@ -34,6 +37,15 @@ impl PartialEq for Datatype {
             (Datatype::Object(a), Datatype::Object(b)) => a == b,
             (Datatype::Array(a), Datatype::Array(b)) => a == b,
             (Datatype::Tuple(a), Datatype::Tuple(b)) => a == b,
+
+            (Datatype::Enum(n, _a), Datatype::Enum(n2, _b)) => n == n2,
+            (Datatype::EnumMember(e1, k1), Datatype::EnumMember(e2, k2)) => {
+                if *e1 != *e2 {
+                    return false;
+                }
+
+                k1 == k2
+            }
             // Default case for inequality
             _ => false,
         }
@@ -101,6 +113,15 @@ impl fmt::Display for Datatype {
             Datatype::Object(ts) => {
                 write!(f, "Object<{}>", ts)
             }
+            Datatype::Enum(name, _) => {
+                write!(f, "enum {}", name)
+            }
+            Datatype::EnumMember(enm, member) => {
+                if let Datatype::Enum(name, _) = enm.as_ref() {
+                    return write!(f, "{}.{}", name, member);
+                }
+                write!(f, "")
+            }
             _ => write!(f, "{:?}", self),
         }
     }
@@ -135,13 +156,32 @@ impl Hash for Datatype {
                 state.write_u8(8);
                 dt.hash(state);
             }
-            Datatype::_Multitype(types) => {
+            Datatype::Enum(name, elements) => {
                 state.write_u8(9);
+                name.hash(state);
+                for e in elements {
+                    e.hash(state);
+                }
+            }
+            Datatype::EnumMember(enm, member) => {
+                state.write_u8(10);
+                (*enm).hash(state);
+
+                if let Datatype::Enum(_, members) = enm.as_ref() {
+                    for (m, i) in members {
+                        if m == member {
+                            i.hash(state);
+                        }
+                    }
+                }
+            }
+            Datatype::_Multitype(types) => {
+                state.write_u8(11);
                 for dt in types {
                     dt.hash(state);
                 }
             }
-            Datatype::_NOTYPE => state.write_u8(10),
+            Datatype::_NOTYPE => state.write_u8(12),
         }
     }
 }
