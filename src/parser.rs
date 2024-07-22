@@ -154,6 +154,7 @@ impl Parser {
         let filename: &String = &token.filename; // Obtém o nome do arquivo do token
         let column: (usize, usize) = token.column; // Obtém a posição da coluna do token
         let lineno: usize = token.lineno; // Obtém o número da linha do token
+        let lineshift: String = " ".repeat(3 + (lineno.to_string().len()));
         let line: &String = &self.lines.as_ref().unwrap()[lineno - 1]; // Obtém a linha do código fonte
         let column_repr: String = format!(
             "{}{}",
@@ -163,13 +164,15 @@ impl Parser {
 
         // Formata a mensagem de erro com informações relevantes
         let formatted_message: String = format!(
-            "%%b{}%%!:%%y{}%%!:%%y{}%%!:\n%%r{} %%y{}%%!\n\t{}\n\t%%r{}%%!",
+            "%%b{}%%!:%%y{}%%!:%%y{}%%!:\n%%r{} %%y{}%%!\n\t{} | {}\n\t{}%%r{}%%!",
             filename,
             lineno,
             column.0,
             "ERROR:",
             message,
+            lineno,
             escape(line),
+            lineshift,
             column_repr,
         );
         printc(&formatted_message); // Imprime a mensagem formatada com cores
@@ -200,28 +203,31 @@ impl Parser {
     fn parse_stmt(&mut self) -> Stmt {
         let curtoken: &Token = &self.at(); // Obtém o token atual
         match curtoken.token_type {
-            // Se o token atual for um Import, analisa uma declaração de importação
+            // Se o token atual for um Import
             TokenType::Import => self.parse_import_stmt(),
-            // Se o token atual for um Export, analisa uma declaração de exportação
+            // Se o token atual for um Export
             TokenType::Export => self.parse_export_stmt(),
-            // Se o token atual for um If, analisa uma declaração de condicional If
+            // Se o token atual for um If
             TokenType::If => self.parse_if_stmt(),
             // Se o token atual for um asm, analisa um statement de código assembly arbitrário
             TokenType::Asm => self.parse_asm_stmt(),
-            // Se o token atual for um mov, analisa os valores a serem movidos
+            // Se o token atual for um mov
             TokenType::Mov => self.parse_mov_stmt(),
-            // Se o token atual for um loop, analisa o loop statement
+            // Se o token atual for um loop
             TokenType::Loop => self.parse_loop_stmt(),
-            // Se o token atual for um for, analisa o for statement
+            // Se o token atual for um for
             TokenType::For => self.parse_for_stmt(),
-            // Se o token atual for um while, analisa o while statement
+            // Se o token atual for um while
             TokenType::While => self.parse_while_stmt(),
-            // Se o token atual for uma unit, analisa a unit
+            // Se o token atual for uma unit
             TokenType::Unit => self.parse_unit(),
+            // Se o token atual for um enum
+            TokenType::Enum => self.parse_enum(),
             // Se o token atual for private ou public, analisa um statement unit
             TokenType::Private | TokenType::Public => self.parse_unit_statement_declaration(),
             // Analisa declaração de variaveis simples, tipadas ou não
             TokenType::Val => self.parse_val_var_declaration(),
+            // Analisa declaração de funções
             TokenType::Label => {
                 let mut column: (usize, usize) = self.at().column;
                 let mut position: (usize, usize) = self.at().position;
@@ -613,6 +619,75 @@ impl Parser {
                     lineno,
                 }
             }
+        }
+    }
+
+    fn parse_enum(&mut self) -> Stmt {
+        let mut column: (usize, usize) = self.at().column;
+        let mut position: (usize, usize) = self.at().position;
+        let lineno: usize = self.at().lineno;
+        // Consome o token de enum
+        self.eat();
+
+        let name = self
+            .expect(TokenType::Identifier, "Identifier Expected.")
+            .value;
+
+        self.expect(TokenType::OBrace, "\"{\" Expected.");
+
+        let mut items: Vec<(String, i32)> = Vec::new();
+        let mut counter: i32 = 0;
+
+        while self.at().token_type != TokenType::CBrace {
+            let identifier: String = self
+                .expect(TokenType::Identifier, "Identifier Expected.")
+                .value;
+
+            if self.at().token_type == TokenType::Attribution {
+                self.eat();
+                let num = self
+                    .expect(TokenType::Number, "Index Expected.")
+                    .value
+                    .parse()
+                    .ok()
+                    .unwrap();
+
+                items.push((identifier, num));
+
+                if self.at().token_type == TokenType::Comma {
+                    self.eat();
+                }
+
+                continue;
+            }
+
+            if self.at().token_type == TokenType::Comma {
+                self.eat();
+            }
+
+            items.push((identifier, counter));
+            counter += 1;
+        }
+
+        self.expect(TokenType::CBrace, "\"}\" Expected.");
+
+        column.1 = self.at().column.1 - 1;
+        position.1 = self.at().position.1 - 1;
+
+        Stmt {
+            kind: NodeType::Enum,
+            expr: Some(Expr::Enum(Enum {
+                kind: NodeType::Enum,
+                name,
+                items,
+                column,
+                position,
+                lineno,
+            })),
+            return_stmt: None,
+            column,
+            position,
+            lineno,
         }
     }
 
@@ -1414,42 +1489,14 @@ impl Parser {
     fn parse_export_stmt(&mut self) -> Stmt {
         let mut column: (usize, usize) = self.at().column;
         let mut position: (usize, usize) = self.at().position;
-        let mut column_export: (usize, usize) = self.at().column;
-        let mut position_export: (usize, usize) = self.at().position;
         let lineno: usize = self.at().lineno;
 
         self.eat(); // Consome o token "export"
-        self.expect(TokenType::OParen, "\"(\" Expected."); // Verifica e consome o token "("
-        self.expect(TokenType::OBracket, "\"[\" Expected."); // Verifica e consome o token "["
 
-        let mut identifiers: Vec<Identifier> = Vec::new(); // Inicializa um vetor para armazenar os identificadores a serem exportados
-
-        // Loop para analisar cada identificador a ser exportado
-        while self.at().token_type != TokenType::CBracket {
-            identifiers.push(Identifier {
-                kind: NodeType::Identifier,
-                symbol: self
-                    .expect(TokenType::Identifier, "Identifier Expected.") // Analisa e armazena o identificador
-                    .value
-                    .clone(),
-                typ: None,
-                column: self.at().column,
-                position: self.at().position,
-                lineno: self.at().lineno,
-            });
-
-            if self.at().token_type == TokenType::Comma {
-                self.eat(); // Consome a vírgula entre os identificadores
-            }
+        if self.at().token_type == TokenType::Export {
+            self.error("Expected something to export.");
         }
-
-        self.expect(TokenType::CBracket, "\"]\" Expected."); // Verifica e consome o token "]"
-        self.expect(TokenType::CParen, "\")\" Expected."); // Verifica e consome o token ")"
-
-        column_export.1 = self.at().column.1 - 1;
-        position_export.1 = self.at().position.1 - 1;
-
-        self.expect(TokenType::Semicolon, "\";\" Expected."); // Verifica e consome o token ";"
+        let statement: Box<Stmt> = Box::new(self.parse_stmt());
 
         column.1 = self.at().column.1 - 1;
         position.1 = self.at().position.1 - 1;
@@ -1459,9 +1506,9 @@ impl Parser {
             kind: NodeType::ExportStmt,
             expr: Some(Expr::ExportStmt(ExportStmt {
                 kind: NodeType::Stmt,
-                identifiers,
-                column: column_export,
-                position: position_export,
+                statement,
+                column,
+                position,
                 lineno,
             })),
             return_stmt: None,
