@@ -30,7 +30,7 @@ struct Cli {
     /// Output file
     #[arg(short, long)]
     output: Option<String>,
-    /// Architecture to be compiled:
+    /// Architecture to be compiled on:
     /// x86_64, aarch64, risc-v
     #[arg(long, default_value = "x86_64")]
     arch: String,
@@ -105,6 +105,7 @@ fn main() {
 
     let mut checker: Checker = Checker::new(ast.clone(), &source_code, &full_path);
     loop {
+        println!("{:#?}", ast);
         for stmt in checker.current_body.2.clone() {
             checker.check(stmt);
         }
@@ -120,6 +121,4 @@ fn main() {
 
     let mut compiler: Compiler = Compiler::new(&full_path, cli.output);
     compiler.compile();
-
-    // println!("{:#?}", ast);
 }
