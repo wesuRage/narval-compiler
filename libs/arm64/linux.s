@@ -15,7 +15,8 @@
 
 .equ STD_IN,         0
 .equ STD_OUT,        1
-.equ STD_ERR,        2 
+.equ STD_ERR,        2
+
 .equ O_RDONLY,       0
 .equ O_WRONLY,       1
 .equ O_CREAT,        0100
