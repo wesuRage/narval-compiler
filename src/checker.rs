@@ -1,3 +1,4 @@
+use crate::ast;
 use crate::ast::*;
 use crate::colors::{escape, printc};
 use crate::datatype::Datatype;
@@ -76,17 +77,23 @@ pub struct Checker<'a> {
     pub bodies: Vec<(i32, Dt, Vec<Stmt>)>,
     pub current_body: (i32, Dt, Vec<Stmt>),
     pub namespaces: Vec<Namespace>,
-    pub namespace: Namespace,
+    pub namespace: &'a mut Namespace,
+    pub current_namespace_index: usize,
     pub lines: Option<Vec<String>>,
+    pub nodes: Vec<Expr>,
     pub current_node: Option<Expr>,
 }
 
 type Dt = Option<Datatype>;
 
 impl<'a> Checker<'a> {
-    pub fn new(tree: Program, source_code: &str, filename: &'a String) -> Checker<'a> {
-        let mut nss: Vec<Namespace> = Vec::new();
-        nss.push(Namespace::new());
+    pub fn new(
+        tree: Program,
+        namespacearr: &'a mut Vec<Namespace>,
+        source_code: &str,
+        filename: &'a String,
+    ) -> Checker<'a> {
+        namespacearr.push(Namespace::new());
         let mut bodies: Vec<(i32, Dt, Vec<Stmt>)> = Vec::new();
         bodies.push((0, None, tree.body.clone()));
 
@@ -96,27 +103,18 @@ impl<'a> Checker<'a> {
             filename,
             bodies: bodies.clone(),
             current_body: bodies[0].clone(),
-            namespaces: nss.clone(),
-            namespace: nss[0].clone(),
+            namespaces: namespacearr.to_vec(),
+            namespace: &mut namespacearr[0],
+            current_namespace_index: 0,
             lines: Some(source_code.split('\n').map(String::from).collect()),
+            nodes: Vec::new(),
             current_node: None,
         }
     }
 
-    pub fn push_node(&mut self, node: Expr) {
-        if let Some(_) = self.current_node {
-            panic!("Current node field is busy.");
-        }
-        self.current_node = Some(node);
+    pub fn inject_value(&mut self, name: String, tdef: Datatype) {
+        self.newvar(name, Some(tdef), true);
     }
-
-    pub fn pop_node(&mut self) {
-        if self.current_node.is_none() {
-            panic!("Current node field is empty.");
-        }
-        self.current_node = None;
-    }
-
     pub fn check(&mut self, mut stmt: Stmt) -> Dt {
         if let Some(ret) = stmt.return_stmt {
             if self.current_body.0 == 0 {
@@ -124,7 +122,7 @@ impl<'a> Checker<'a> {
                     (ret.position, ret.column, ret.lineno),
                     "Can not have return statments at global scope.",
                 );
-                return Some(Any);
+                return Some(Void);
             }
             if let Some(value) = ret.argument {
                 let dt = self.check(self.expr2stmt(value.clone()));
@@ -140,25 +138,25 @@ impl<'a> Checker<'a> {
                 }
             } else {
                 if let Some(fdt) = self.current_body.1.clone() {
-                    if fdt != Any {
+                    if fdt != Void {
                         self.error_wdata(
                             //voltei
                             (ret.position, ret.column, ret.lineno),
                             "Expected no value here, but found one value.",
                         );
-                        return Some(Any);
+                        return Some(Void);
                     }
                 }
             }
 
-            return Some(Any);
+            return Some(Void);
         }
         match stmt.expr {
             Some(Expr::Identifier(id)) => self.check_id(id),
-            Some(Expr::NullLiteral(_)) => Some(Any),
+            Some(Expr::VoidLiteral(_)) => Some(Void),
             Some(Expr::NumericLiteral(_)) => Some(Integer),
             Some(Expr::StringLiteral(_)) => Some(Text),
-            Some(Expr::TrueLiteral(_)) | Some(Expr::FalseLiteral(_)) => Some(Boolean),
+            Some(Expr::BooleanLiteral(_)) => Some(Boolean),
             Some(Expr::ObjectLiteral(ref mut object)) => self.check_object(object),
             Some(Expr::VarDeclaration(decl)) => self.check_newvar(decl),
             Some(Expr::AssignmentExpr(expr)) => self.check_setvar(expr),
@@ -167,8 +165,10 @@ impl<'a> Checker<'a> {
             Some(Expr::FunctionDeclaration(decl)) => self.check_label(decl),
             Some(Expr::_ENDFUNCTION(..)) => self.finalize_check_label(),
             Some(Expr::IfStmt(stmt)) => self.check_if(stmt),
-
-            _ => Some(Any),
+            Some(Expr::CallExpr(expr)) => self.check_call(expr),
+            Some(Expr::Enum(enm)) => self.check_enum(enm),
+            Some(Expr::AsmStmt(stmt)) => self.check_asmpiece(stmt),
+            _ => Some(Void),
         }
     }
 
@@ -206,7 +206,7 @@ impl<'a> Checker<'a> {
             Ok(value) => value.clone(),
             Err(error) => {
                 self.error(Expr::Identifier(expr.clone()), &error);
-                Some(Any)
+                Some(Void)
             }
         };
     }
@@ -227,7 +227,7 @@ impl<'a> Checker<'a> {
                     }),
                     &error,
                 );
-                Some(Any)
+                Some(Void)
             }
         };
     }
@@ -265,34 +265,45 @@ impl<'a> Checker<'a> {
         }
 
         return if types.len() == 1 {
-            let r = Some(Object(Box::new(types[0].clone())));
-            expr.typ = r.clone();
+            // pra mim tu escreveu igual o flash e apagou
+            if Some(types[0].clone()).is_none() {
+                println!("é none");
+                return Some(Void);
+            }
+            let r: Option<Datatype> = Some(Object(Box::new(types[0].clone())));
+            *expr.typ.borrow_mut() = r.clone();
             return r;
         } else {
-            Some(Any)
+            Some(Void)
         };
     }
 
     fn newvar(&mut self, name: String, dt: Dt, constant: bool) {
-        self.namespace
-            .newvar(name, dt.unwrap(), constant)
-            .expect("Error while creating new variable");
+        if let Some(t) = dt {
+            self.namespace
+                .newvar(name, t, constant)
+                .expect("Error while creating new variable");
+        }
     }
     fn check_newvar(&mut self, decl: VarDeclaration) -> Dt {
-        let dt = self.check(self.expr2stmt(*(decl.clone().value)));
-        if decl.data_type != dt.clone().unwrap() {
-            self.error(
-                *(decl.clone().value),
-                format!(
-                    "Type mismatch: expected type {} for value, but found {}",
-                    decl.data_type,
-                    dt.clone().unwrap()
+        let dt: Option<Datatype> = self.check(self.expr2stmt(*(decl.clone().value)));
+        if let Some(datatyp) = dt.clone() {
+            if !decl.inferred && decl.data_type != datatyp {
+                self.error(
+                    *(decl.clone().value),
+                    format!(
+                        "Type mismatch: expected type {} for value, but found {}",
+                        decl.data_type, datatyp
+                    )
+                    .as_str(),
                 )
-                .as_str(),
-            )
+            }
+            self.newvar(decl.identifier.unwrap(), dt, false);
+            None
+        } else {
+            println!("{:?}", dt.clone());
+            None
         }
-        self.newvar(decl.identifier.unwrap(), dt, false);
-        None
     }
 
     fn check_setvar(&mut self, expr: AssignmentExpr) -> Dt {
@@ -331,7 +342,7 @@ impl<'a> Checker<'a> {
         if let (Some(l), Some(r)) = (left, right) {
             let op = expr.operator.as_str();
             match op {
-                "+" | "-" | "\\" | "/" | "**" => {
+                "+" | "-" | "\\" | "/" | "**" | "%" => {
                     let isntnum_l = !(l == Integer || l == Decimal);
                     let isntnum_r = !(r == Integer || r == Decimal);
 
@@ -367,14 +378,12 @@ impl<'a> Checker<'a> {
 
                     match casted {
                         Ok(dt) => {
-                            let wrapped: Expr = Expr::BinaryExpr(expr.clone());
-                            self.push_node(wrapped);
-                            expr.typ = Some(dt.clone());
+                            *expr.typ.borrow_mut() = Some(dt.clone());
                             Some(dt)
                         }
                         Err(err) => {
                             self.error(Expr::BinaryExpr(expr.clone()), err.as_str());
-                            Some(Any)
+                            Some(Void)
                         }
                     }
                 }
@@ -422,10 +431,13 @@ impl<'a> Checker<'a> {
                         let casted = l.cast(&r);
 
                         match casted {
-                            Ok(dt) => Some(dt),
+                            Ok(dt) => {
+                                *expr.typ.borrow_mut() = Some(dt.clone());
+                                Some(dt)
+                            }
                             Err(err) => {
                                 self.error(Expr::BinaryExpr(expr.clone()), err.as_str());
-                                Some(Any)
+                                Some(Void)
                             }
                         }
                     }
@@ -466,17 +478,52 @@ impl<'a> Checker<'a> {
                     let casted = l.cast(&r);
 
                     match casted {
-                        Ok(_) => Some(Boolean),
+                        Ok(_) => {
+                            let t: Option<Datatype> = Some(Boolean);
+                            *expr.typ.borrow_mut() = t.clone();
+                            return t;
+                        }
                         Err(err) => {
                             self.error(Expr::BinaryExpr(expr.clone()), err.as_str());
-                            Some(Any)
+                            Some(Void)
                         }
                     }
+                }
+                "<<" | ">>" | "&" | "|" | "!" | "^" => {
+                    let side1 = l.cast(&Integer);
+                    let side2 = r.cast(&Integer);
+
+                    match (side1, side2) {
+                        (Ok(a), Ok(b)) => {
+                            if a != Integer {
+                                self.error(
+                                    *expr.left.clone(),
+                                    format!("Expected an Integer here, not {}.", a).as_str(),
+                                );
+                            }
+
+                            if a != b {
+                                self.error(
+                                    *expr.right.clone(),
+                                    format!("Expected an Integer here, not {}.", b).as_str(),
+                                );
+                            }
+                        }
+                        (Err(err), _) => {
+                            self.error(*expr.left.clone(), err.as_str());
+                        }
+                        (Ok(_), Err(err)) => {
+                            self.error(*expr.right.clone(), err.as_str());
+                        }
+                    }
+                    let t = Some(Integer);
+                    *expr.typ.borrow_mut() = t.clone();
+                    return t;
                 }
                 _ => Some(Boolean),
             }
         } else {
-            return Some(Any);
+            return Some(Void);
         }
     }
 
@@ -494,7 +541,7 @@ impl<'a> Checker<'a> {
             return Some(Array(Box::new(types[0].clone())));
         } else {
             self.error(Expr::ArrayExpr(expr), "Arrays can't be multitype!");
-            Some(Any)
+            Some(Void)
         }
     }
 
@@ -506,6 +553,7 @@ impl<'a> Checker<'a> {
     ) {
         self.func_id += 1;
         body.push(self.expr2stmt(Expr::_ENDFUNCTION(params.to_vec(), rettype.clone())));
+        //PERA
         self.bodies
             .push((self.func_id, Some(rettype), body.to_vec()));
         self.current_body = self.bodies[self.bodies.len() - 1].clone();
@@ -513,35 +561,48 @@ impl<'a> Checker<'a> {
 
     fn popbody(&mut self) {
         self.func_id -= 1;
-        self.bodies.remove(self.bodies.len() - 1);
+        self.bodies.pop();
         self.current_body = self.bodies[self.bodies.len() - 1].clone();
     }
 
-    fn pushns(&mut self) {
-        self.namespaces
-            .push(Namespace::new_inheriting(Some(Rc::new(RefCell::new(
-                self.namespaces[self.namespaces.len() - 1].clone(),
-            )))));
-        self.namespace = self.namespaces[self.namespaces.len() - 1].clone();
+    pub fn pushns(&mut self) {
+        let new_ns = Namespace::new_inheriting(Some(Rc::new(RefCell::new(
+            self.namespaces[self.current_namespace_index].clone(),
+        ))));
+        self.namespaces.push(new_ns);
+        self.current_namespace_index = self.namespaces.len() - 1;
     }
 
-    fn popns(&mut self) {
-        self.namespaces.remove(self.namespaces.len() - 1);
-        self.namespace = self.namespaces[self.namespaces.len() - 1].clone();
+    //hm, o q ce fez meu caro senhor
+    pub fn popns(&mut self) {
+        if self.namespaces.len() > 1 {
+            self.namespaces.pop();
+            self.current_namespace_index = self.namespaces.len() - 1;
+        }
+    }
+
+    pub fn current_namespace(&self) -> &Namespace {
+        &self.namespaces[self.current_namespace_index]
+    }
+
+    pub fn current_namespace_mut(&mut self) -> &mut Namespace {
+        &mut self.namespaces[self.current_namespace_index]
     }
 
     fn check_label(&mut self, declt: Box<FunctionDeclaration>) -> Dt {
-        let decl = *declt;
+        let decl: FunctionDeclaration = *declt;
         let mut params: Vec<(String, Datatype)> = Vec::new();
-        let mut body = decl.body;
-        for (_size, t, name) in decl.parameters {
+        let mut body: Vec<Stmt> = decl.body;
+        for (_size, name, t) in decl.parameters {
             params.push((name, t));
         }
-        let ft = Some(Function((
+        let ft: Option<Datatype> = Some(Function((
             params.clone(),
-            Box::new(decl.return_type.clone()),
+            (decl.return_size, Box::new(decl.return_type.clone())),
         )));
-        self.newvar(decl.name, ft.clone(), true);
+
+        self.newvar(decl.name.clone(), ft.clone(), true);
+
         self.pushbody(&mut body, &params, decl.return_type.clone());
         self.pushns();
 
@@ -555,7 +616,7 @@ impl<'a> Checker<'a> {
     fn finalize_check_label(&mut self) -> Dt {
         self.popbody();
         self.popns();
-        Some(Any)
+        Some(Void)
     }
 
     fn check_if(&mut self, stat: Box<IfStmt>) -> Dt {
@@ -590,6 +651,65 @@ impl<'a> Checker<'a> {
             self.popns();
         }
 
-        Some(Any)
+        Some(Void)
+    }
+
+    fn check_call(&mut self, call: CallExpr) -> Dt {
+        let caller_t = self.check(self.expr2stmt(*call.clone().caller));
+        let mut rt: Dt = None;
+        if let Some(ct) = caller_t {
+            if let Function((params, rettype)) = ct {
+                let fplen = params.len();
+                if &call.clone().args.len() != &fplen {
+                    self.error(
+                        Expr::CallExpr(call.clone()),
+                        format!(
+                            "Expected {} arguments here, but found {}.",
+                            fplen,
+                            call.clone().args.len()
+                        )
+                        .as_str(),
+                    );
+                }
+
+                for (i, arg) in call.args.into_iter().enumerate() {
+                    let at = self.check(self.expr2stmt(*arg.clone())).unwrap_or(Void);
+
+                    if !(at == params[i].1
+                        || at.cast(&params[i].1).expect("Unable to parse void types.")
+                            == params[i].1)
+                    {
+                        self.error(
+                            *arg.clone(),
+                            format!("Expected type {} here, but found {}.", params[i].1, at)
+                                .as_str(),
+                        )
+                    }
+                }
+
+                rt = Some(*rettype.1);
+            }
+        }
+
+        rt
+    }
+
+    fn check_enum(&mut self, enm: ast::Enum) -> Dt {
+        let et: Option<Datatype> = Some(Datatype::Enum(enm.name.clone(), enm.items));
+        self.newvar(enm.name, et.clone(), true);
+        return et;
+    }
+
+    fn check_asmpiece(&mut self, stmt: AsmStmt) -> Dt {
+        for l in stmt.code {
+            let dt = self.check(self.expr2stmt(l.clone()));
+            if let Some(t) = dt {
+                if t != Text {
+                    self.error(l.clone(), format!("Expected Text in assembly statments, but found {}.... %%g(please God forgive this developer, he's a imperfect human being that don't know write assembly).%%!", t).as_str());
+                }
+            }
+        }
+
+        Some(Void)
     }
 }
