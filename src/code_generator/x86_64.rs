@@ -1,5 +1,6 @@
 use crate::ast::*;
 use crate::colors::printc;
+use crate::datatype::*;
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
@@ -12,12 +13,14 @@ pub struct X8664Generator<'a> {
     pub segments: Segments,
     pub assembly: String,
     pub max_local_directive: &'a str,
-    pub values: HashMap<String, (String, NodeType)>,
+    pub identifier: HashMap<String, (String, NodeType)>,
     pub strings: HashMap<String, (String, Option<String>)>,
     pub unitialized_strings_counter: usize,
     pub memory_access: bool,
     pub current_string: Option<String>,
     pub current_int: i32,
+    pub local_identifier: HashMap<String, String>,
+    pub function_parameter: HashMap<String, (String, &'a str)>,
 }
 
 #[derive(Clone)]
@@ -47,12 +50,14 @@ impl<'a> X8664Generator<'a> {
 
         let assembly: String = String::new();
         let max_local_directive: &str = "db";
-        let values: HashMap<String, (String, NodeType)> = HashMap::new();
+        let identifier: HashMap<String, (String, NodeType)> = HashMap::new();
         let strings: HashMap<String, (String, Option<String>)> = HashMap::new();
         let unitialized_strings_counter: usize = 0;
         let memory_access: bool = false;
         let current_string: Option<String> = None;
         let current_int: i32 = 0;
+        let local_identifier: HashMap<String, String> = HashMap::new();
+        let function_parameter: HashMap<String, (String, &'a str)> = HashMap::new();
 
         X8664Generator {
             program: tree,
@@ -60,22 +65,29 @@ impl<'a> X8664Generator<'a> {
             segments,
             assembly,
             max_local_directive,
-            values,
+            identifier,
             strings,
             unitialized_strings_counter,
             memory_access,
             current_string,
             current_int,
+            local_identifier,
+            function_parameter,
         }
     }
 
     pub fn generate(&mut self) {
+        let mut main: Vec<String> = self.segments.code_main.clone();
+        let mut other: Vec<String> = self.segments.code_other.clone();
         for stmt in self.program.clone().body {
             match stmt.expr {
                 Some(Expr::VarDeclaration(decl)) => {
-                    self.generate_var_declaration(decl);
+                    self.generate_var_declaration(decl, &mut main, "".to_string());
                 }
-                Some(Expr::CallExpr(expr)) => self.generate_call_expr(expr),
+                Some(Expr::FunctionDeclaration(decl)) => {
+                    self.generate_function_declaration(*decl, &mut other, "".to_string());
+                }
+                Some(Expr::CallExpr(expr)) => self.generate_call_expr(expr, &mut main),
                 _ => (),
             }
         }
@@ -102,14 +114,14 @@ impl<'a> X8664Generator<'a> {
 
         self.assembly.push_str("\n");
 
-        for code in &self.segments.code_main {
+        for code in &main {
             self.assembly.push_str(code);
         }
         self.assembly.push_str("\tpush 0\n");
         self.assembly.push_str("\tcall exit\n");
         self.assembly.push_str("\n");
 
-        for code in &self.segments.code_other {
+        for code in &other {
             self.assembly.push_str(code);
         }
 
@@ -126,7 +138,170 @@ impl<'a> X8664Generator<'a> {
             .expect("Unable to write to intermediate assembly file");
     }
 
-    fn generate_call_expr(&mut self, expr: CallExpr) {
+    fn generate_return_stmt(
+        &mut self,
+        return_stmt: Option<ReturnStmt>,
+        return_size: String,
+        segment: &mut Vec<String>,
+    ) {
+        if let Some(stmt) = return_stmt {
+            if let Some(arg) = stmt.argument {
+                let directive = match return_size.as_str() {
+                    "al" => "db",
+                    "ax" => "dw",
+                    "eax" => "dd",
+                    _ => "dq",
+                };
+
+                self.segments
+                    .data
+                    .push(format!("\t__TEMP_RETURN {} 0\n", directive));
+                self.identifier.insert(
+                    "__TEMP_RETURN".to_string(),
+                    (directive.to_string(), NodeType::VoidLiteral),
+                );
+
+                match arg {
+                    Expr::Identifier(ident) => {
+                        let param: Option<&&str> = self
+                            .function_parameter
+                            .get(&ident.symbol)
+                            .map(|(_, stack)| stack);
+
+                        if let Some(parameter) = param {
+                            segment.push(format!("\tmov [__TEMP_RETURN], {}\n", parameter))
+                        } else {
+                            let local: Option<&String> =
+                                self.local_identifier.get(&ident.symbol).map(|id| id);
+                            if let Some(id) = local {
+                                segment.push(format!("\tmov rax, [{}]\n", id));
+                                segment.push("\tmov [__TEMP_RETURN], rax\n".to_string())
+                            } else {
+                                segment.push(format!("\tmov rax, [{}]\n", ident.symbol));
+                                segment.push("\tmov [__TEMP_RETURN], rax\n".to_string())
+                            }
+                        }
+                    }
+
+                    Expr::NumericLiteral(num) => {
+                        segment.push(format!("\tmov [__TEMP_RETURN], {}\n", num.value))
+                    }
+                    Expr::BinaryExpr(binop) => self.generate_expr(
+                        Expr::BinaryExpr(binop),
+                        Some("__TEMP_RETURN".to_string()),
+                        segment,
+                    ),
+                    _ => panic!("Expression not supported in return statement"),
+                }
+                segment.push(format!("\tmov {}, [__TEMP_RETURN]\n", return_size))
+            } else {
+                segment.push(format!("\tmov {}, 0\n", return_size))
+            }
+        } else {
+            panic!("No return statement found");
+        }
+    }
+
+    fn generate_function_declaration(
+        &mut self,
+        declaration: FunctionDeclaration,
+        segment: &mut Vec<String>,
+        parent: String,
+    ) {
+        let name: String = declaration.name;
+        let body: Vec<Stmt> = declaration.body;
+        let parameters: Vec<(String, String, Datatype)> = declaration.parameters;
+        let return_size: String = self.get_full_return_size(declaration.return_size.as_str());
+        let mut scope: Vec<String> = vec![];
+        let mut parameters_swap: Vec<String> = vec![];
+        let asm_parameters: Vec<&str> = vec![
+            "rdi", "rsi", "rdx", "rcx", "rbx", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
+        ];
+        let mut parameter_association: Vec<(String, &str)> = Vec::new();
+        let mut rbp: i32 = 16;
+
+        if !parent.is_empty() {
+            segment.push(format!("{}_{}:\n", parent, name));
+            self.local_identifier
+                .insert(name.clone(), format!("{}_{}", parent, name));
+        } else {
+            segment.push(format!("{}:\n", name));
+            let directive = self.get_return_size(&declaration.return_size.clone());
+            self.identifier
+                .insert(name.clone(), (directive, NodeType::FunctionDeclaration));
+        }
+
+        segment.push("\tpush rbp\n".to_string());
+        segment.push("\tmov rbp, rsp\n".to_string());
+        segment.push("\n".to_string());
+
+        let mut param_index: usize = 0;
+        for parameter in parameters {
+            let directive = self.return_constant_directive_size(parameter.0.as_str());
+            let node_type = match parameter.2 {
+                Datatype::Integer => NodeType::NumericLiteral,
+                Datatype::Decimal => NodeType::NumericLiteral,
+                Datatype::Text => NodeType::StringLiteral,
+                Datatype::Boolean => NodeType::BooleanLiteral,
+                Datatype::Array(_) => NodeType::ArrayExpr,
+                Datatype::Object(_) => NodeType::ObjectLiteral,
+                Datatype::Tuple(_) => NodeType::TupleLiteral,
+                Datatype::Enum(_, _) => NodeType::Enum,
+                _ => NodeType::VoidLiteral,
+            };
+
+            self.identifier
+                .insert(parameter.1.clone(), (directive, node_type));
+
+            parameter_association.push((parameter.1.clone(), asm_parameters[param_index]));
+
+            self.function_parameter.insert(
+                parameter.1.clone(),
+                parameter_association[param_index].clone(),
+            );
+
+            parameters_swap.push(format!(
+                "\tmov {}, [rbp+{}]\n",
+                asm_parameters[param_index],
+                rbp.clone()
+            ));
+
+            param_index += 1;
+            rbp += 8;
+        }
+
+        for parameter in parameters_swap {
+            segment.push(parameter);
+        }
+
+        for stmt in body {
+            match stmt.expr {
+                Some(Expr::VarDeclaration(decl)) => {
+                    self.generate_var_declaration(decl, &mut scope, name.clone());
+                }
+                // Some(Expr::FunctionDeclaration(decl)) => {
+                //     self.generate_function_declaration(*decl, &mut scope, name.clone());
+                // }
+                Some(Expr::CallExpr(expr)) => self.generate_call_expr(expr, &mut scope),
+                _ => (),
+            }
+            if !stmt.return_stmt.is_none() {
+                self.generate_return_stmt(stmt.return_stmt, return_size.clone(), &mut scope);
+            }
+        }
+
+        for instruction in scope {
+            segment.push(instruction);
+        }
+
+        segment.push("\n".to_string());
+        segment.push("\tmov rsp, rbp\n".to_string());
+        segment.push("\tpop rbp\n".to_string());
+        segment.push("\tret\n".to_string());
+        segment.push("\n".to_string());
+    }
+
+    fn generate_call_expr(&mut self, expr: CallExpr, segment: &mut Vec<String>) {
         if let Expr::Identifier(Identifier { symbol, .. }) = *expr.caller {
             let caller = symbol;
             let args = expr.args;
@@ -161,7 +336,7 @@ impl<'a> X8664Generator<'a> {
                     }
                     Expr::Identifier(ref id) => {
                         if self.memory_access {
-                            let directive = self.values.get(&id.symbol).map(|(v, _)| v.clone());
+                            let directive = self.identifier.get(&id.symbol).map(|(v, _)| v.clone());
                             let size = self.return_inverse_constant_directive_size(
                                 directive.as_deref().unwrap(),
                             );
@@ -171,12 +346,16 @@ impl<'a> X8664Generator<'a> {
                         }
                     }
                     Expr::CallExpr(ref call_expr) => {
-                        self.generate_call_expr(call_expr.clone());
+                        self.generate_call_expr(call_expr.clone(), segment);
 
                         arg_stack.push(CallerType::Id("rax".to_string()));
                     }
                     Expr::BinaryExpr(binary_expr) => {
-                        self.generate_binary_expr(Expr::BinaryExpr(binary_expr), None);
+                        self.generate_expr(
+                            Expr::BinaryExpr(binary_expr),
+                            Some("rax".to_string()),
+                            segment,
+                        );
                     }
                     _ => panic!("Unexpected argument type in call expression."),
                 }
@@ -191,59 +370,74 @@ impl<'a> X8664Generator<'a> {
                             let extracted_id = split_temp.last().unwrap().replace("]", "");
 
                             let directive = self
-                                .values
+                                .identifier
                                 .get(&extracted_id)
                                 .map(|(d, _)| d.clone())
                                 .unwrap();
                             if directive != "db" {
                                 let equivalent_directive =
                                     self.return_inverse_constant_directive_size(&directive);
-                                self.segments.code_main.push(format!(
+                                segment.push(format!(
                                     "\tpush {} [{}]\n",
                                     equivalent_directive, extracted_id
                                 ));
                             } else {
-                                self.segments
-                                    .code_main
-                                    .push(format!("\tpush [{}]\n", extracted_id));
+                                segment.push(format!("\tpush [{}]\n", extracted_id));
                             }
                         } else {
-                            self.segments.code_main.push(format!("\tpush {}\n", id));
+                            segment.push(format!("\tpush {}\n", id));
                         }
                     }
 
-                    CallerType::Int(int) => {
-                        self.segments.code_main.push(format!("\tpush {}\n", int))
-                    }
-                    CallerType::Str(string) => {
-                        self.segments.code_main.push(format!("\tpush {}\n", string))
-                    }
+                    CallerType::Int(int) => segment.push(format!("\tpush {}\n", int)),
+                    CallerType::Str(string) => segment.push(format!("\tpush {}\n", string)),
                 };
             }
 
-            self.segments.code_main.push(format!("\tcall {}\n", caller));
-            self.segments.code_main.push("\n".to_string());
+            segment.push(format!("\tcall {}\n", caller));
+            segment.push("\n".to_string());
         } else {
             panic!("Caller must be an identifier.");
         }
     }
 
-    fn generate_expr(&mut self, expr: Expr) {
+    fn generate_expr(&mut self, expr: Expr, identifier: Option<String>, segment: &mut Vec<String>) {
         match expr {
             Expr::BinaryExpr(binary_expr) => {
-                self.generate_binary_expr(Expr::BinaryExpr(binary_expr), None)
+                let op = binary_expr.operator.as_str();
+
+                //vou fazer prioridade aq
+                if op == "**" {
+                    self.generate_binary_exponential_expr(binary_expr, identifier, segment);
+                } else if op == "*" || op == "/" || op == "\\" || op == "%" {
+                    self.generate_binary_multiplicative_expr(binary_expr, identifier, segment);
+                } else if op == "+" || op == "-" {
+                    self.generate_binary_additive_expr(binary_expr, identifier, segment);
+                } else if op == "<<" || op == ">>" {
+                    self.generate_binary_bitshift_expr(binary_expr, identifier, segment);
+                }
             }
             Expr::NumericLiteral(num) => {
-                self.segments
-                    .code_main
-                    .push(format!("\tmov rax, {}\n", num.value));
+                segment.push(format!("\tmov rax, {}\n", num.value));
                 self.current_int = num.value.parse().ok().unwrap();
             }
             Expr::Identifier(ident) => {
                 self.memory_access = true;
-                self.segments
-                    .code_main
-                    .push(format!("\tmovzx rax, [{}]\n", ident.symbol))
+                let param = self
+                    .function_parameter
+                    .get(&ident.symbol)
+                    .map(|(_, stack)| stack);
+
+                if let Some(parameter) = param {
+                    segment.push(format!("\tmov rax, {}\n", parameter))
+                } else {
+                    let local = self.local_identifier.get(&ident.symbol).map(|id| id);
+                    if let Some(id) = local {
+                        segment.push(format!("\tmovzx rax, [{}]\n", id))
+                    } else {
+                        segment.push(format!("\tmovzx rax, [{}]\n", ident.symbol))
+                    }
+                }
             }
             Expr::StringLiteral(string) => {
                 let string = format!(
@@ -260,128 +454,178 @@ impl<'a> X8664Generator<'a> {
         }
     }
 
-    fn generate_binary_expr(&mut self, expr: Expr, identifier: Option<String>) {
-        if let Expr::BinaryExpr(exp) = expr {
-            self.generate_binary_additive_expr(*exp.left);
-            self.segments.code_main.push("\tmov rbx, rax\n".to_string());
-            self.generate_binary_additive_expr(*exp.right);
+    fn generate_binary_bitshift_expr(
+        &mut self,
+        expr: BinaryExpr,
+        identifier: Option<String>,
+        segment: &mut Vec<String>,
+    ) {
+        self.generate_expr(*expr.left, identifier.clone(), segment);
+        segment.push("\tmov rbx, rax\n".to_string());
+        self.generate_expr(*expr.right, identifier.clone(), segment);
 
-            match exp.operator.as_str() {
-                "<<" => self.segments.code_main.push("\tshl rbx, rax\n".to_string()),
-                ">>" => self.segments.code_main.push("\tshr rbx, rax\n".to_string()),
-                _ => (),
+        match expr.operator.as_str() {
+            "<<" => {
+                segment.push("\tmov cl, byte [rax]\n".to_string());
+                segment.push("\tshl rbx, cl\n".to_string());
             }
-            if let Some(id) = identifier {
-                if let Some(_) = self.values.get(&id) {
-                    self.memory_access = true;
-                    self.segments
-                        .code_main
-                        .push(format!("\tmov [{}], rax\n", id));
-                }
+            ">>" => {
+                segment.push("\tmov cl, byte [rax]\n".to_string());
+                segment.push("\tshr rbx, cl\n".to_string());
             }
+            _ => (),
         }
-    }
-    fn generate_binary_additive_expr(&mut self, expr: Expr) {
-        if let Expr::BinaryExpr(binary_expr) = expr {
-            self.generate_binary_multiplicative_expr(*binary_expr.left);
 
-            self.segments.code_main.push("\tmov rbx, rax\n".to_string());
-
-            self.generate_binary_multiplicative_expr(*binary_expr.right);
-
-            match binary_expr.operator.as_str() {
-                "+" => self.segments.code_main.push("\tadd rax, rbx\n".to_string()),
-                "-" => self.segments.code_main.push("\tsub rax, rbx\n".to_string()),
-                _ => (),
-            }
-        } else {
-            self.generate_expr(expr);
-        }
+        self.generate_mov_identifier(identifier, segment);
     }
 
-    fn generate_binary_multiplicative_expr(&mut self, expr: Expr) {
-        if let Expr::BinaryExpr(exp) = expr {
-            self.generate_binary_exponential_expr(*exp.left);
-            self.segments.code_main.push("\tmov rbx, rax\n".to_string());
-            self.generate_binary_exponential_expr(*exp.right);
+    fn generate_mov_identifier(&mut self, identifier: Option<String>, segment: &mut Vec<String>) {
+        if let Some(ident) = identifier {
+            if let Some(_) = self.identifier.get(&ident) {
+                self.memory_access = true;
 
-            match exp.operator.as_str() {
-                "*" => {
-                    let left = self.current_string.as_ref().unwrap().to_owned();
+                let param: Option<&&str> =
+                    self.function_parameter.get(&ident).map(|(_, stack)| stack);
 
-                    if self.current_string.is_none() {
-                        self.segments
-                            .code_main
-                            .push("\timul rax, rbx\n".to_string());
+                if let Some(parameter) = param {
+                    segment.push(format!("\tmov {}, rax\n", parameter))
+                } else {
+                    let local = self.local_identifier.get(&ident).map(|id| id);
+                    if let Some(id) = local {
+                        segment.push(format!("\tmov [{}], rax\n", id))
                     } else {
-                        let right = self.current_int;
-                        if right > 0 {
-                            self.segments.code_main.push(format!("\tpush {}\n", left));
-                            self.segments.code_main.push(format!("\tpush {}\n", right));
-                            self.segments
-                                .code_main
-                                .push("\ncall __txt_repeater\n".to_string());
-                        } else {
-                            panic!("Cannot multiply string by zero");
-                        }
+                        segment.push(format!("\tmov [{}], rax\n", ident))
                     }
                 }
-                "/" => {
-                    self.segments
-                        .code_main
-                        .push("\txchg rax, rbx\n".to_string());
-                    self.segments.code_main.push("\tcqo\n".to_string());
-                    self.segments.code_main.push("\tidiv rbx\n".to_string());
-                }
-                "%" => {
-                    self.segments
-                        .code_main
-                        .push("\txchg rax, rbx\n".to_string());
-                    self.segments.code_main.push("\tcqo\n".to_string());
-                    self.segments.code_main.push("\tidiv rbx\n".to_string());
-                    self.segments.code_main.push("\tmov rax, rdx\n".to_string());
-                }
-
-                "\\" => {
-                    self.segments
-                        .code_main
-                        .push("\txchg rax, rbx\n".to_string());
-                    self.segments.code_main.push("\tcqo\n".to_string());
-                    self.segments.code_main.push("\tidiv rbx\n".to_string());
-                }
-                _ => (),
             }
-        } else {
-            self.generate_expr(expr);
         }
     }
 
-    fn generate_binary_exponential_expr(&mut self, expr: Expr) {
-        if let Expr::BinaryExpr(exp) = expr {
-            self.generate_bitwisenot_expr(*exp.left);
-            self.segments.code_main.push("\tmov rbx, rax\n".to_string());
-            self.generate_bitwisenot_expr(*exp.right);
+    fn generate_binary_additive_expr(
+        &mut self,
+        expr: BinaryExpr,
+        identifier: Option<String>,
+        segment: &mut Vec<String>,
+    ) {
+        self.generate_expr(*expr.left, identifier.clone(), segment);
 
-            if exp.operator.as_str() == "**" {
-                self.segments.code_main.push("\tpush rax\n".to_string());
-                self.segments.code_main.push("\tpush rbx\n".to_string());
-                self.segments.code_main.push("\tcall __pow\n".to_string());
+        segment.push("\tmov rbx, rax\n".to_string());
+
+        self.generate_expr(*expr.right, identifier.clone(), segment);
+
+        match expr.operator.as_str() {
+            "+" => {
+                segment.push("\tadd rax, rbx\n".to_string());
+                self.generate_mov_identifier(identifier, segment);
             }
-        } else {
-            self.generate_expr(expr);
+            "-" => {
+                segment.push("\tsub rax, rbx\n".to_string());
+                self.generate_mov_identifier(identifier, segment);
+            }
+            _ => (),
         }
     }
 
-    fn generate_bitwisenot_expr(&mut self, expr: Expr) {
+    fn generate_binary_multiplicative_expr(
+        &mut self,
+        expr: BinaryExpr,
+        identifier: Option<String>,
+        segment: &mut Vec<String>,
+    ) {
+        match expr.operator.as_str() {
+            "*" => unsafe {
+                if expr.typ.as_ptr().as_ref().unwrap().to_owned().unwrap() == Datatype::Text {
+                    self.generate_expr(*expr.left, identifier.clone(), segment);
+
+                    let s: String = <Option<String> as Clone>::clone(&self.current_string).unwrap();
+                    self.generate_expr(*expr.right, identifier.clone(), segment);
+                    segment.push(format!("\tpush {}\n", s));
+                    segment.push(format!("\tpush rax\n"));
+                    segment.push("\ncall __txt_repeater\n".to_string());
+
+                    self.generate_mov_identifier(identifier, segment);
+                } else {
+                    self.generate_expr(*expr.left, identifier.clone(), segment);
+                    segment.push("\tmov rbx, rax\n".to_string());
+                    self.generate_expr(*expr.right, identifier.clone(), segment);
+                    segment.push("\timul rax, rbx\n".to_string());
+
+                    self.generate_mov_identifier(identifier, segment);
+                }
+            },
+            "/" => {
+                self.generate_expr(*expr.left.clone(), identifier.clone(), segment);
+                segment.push("\tmov rbx, rax\n".to_string());
+                self.generate_expr(*expr.right.clone(), identifier.clone(), segment);
+                segment.push("\txchg rax, rbx\n".to_string());
+                segment.push("\tcqo\n".to_string());
+                segment.push("\tidiv rbx\n".to_string());
+
+                self.generate_mov_identifier(identifier, segment);
+            }
+            "%" => {
+                self.generate_expr(*expr.left.clone(), identifier.clone(), segment);
+                segment.push("\tmov rbx, rax\n".to_string());
+                self.generate_expr(*expr.right.clone(), identifier.clone(), segment);
+                segment.push("\txchg rax, rbx\n".to_string());
+                segment.push("\tcqo\n".to_string());
+                segment.push("\tidiv rbx\n".to_string());
+                segment.push("\tmov rax, rdx\n".to_string());
+
+                self.generate_mov_identifier(identifier, segment);
+            }
+
+            "\\" => {
+                self.generate_expr(*expr.left.clone(), identifier.clone(), segment);
+                segment.push("\tmov rbx, rax\n".to_string());
+                self.generate_expr(*expr.right.clone(), identifier.clone(), segment);
+                segment.push("\txchg rax, rbx\n".to_string());
+                segment.push("\tcqo\n".to_string());
+                segment.push("\tidiv rbx\n".to_string());
+
+                self.generate_mov_identifier(identifier, segment);
+            }
+            _ => (),
+        }
+    }
+
+    fn generate_binary_exponential_expr(
+        &mut self,
+        expr: BinaryExpr,
+        identifier: Option<String>,
+        segment: &mut Vec<String>,
+    ) {
+        self.generate_expr(*expr.left, identifier.clone(), segment);
+        segment.push("\tmov rbx, rax\n".to_string());
+        self.generate_expr(*expr.right, identifier.clone(), segment);
+
+        segment.push("\tpush rax\n".to_string());
+        segment.push("\tpush rbx\n".to_string());
+        segment.push("\tcall __pow\n".to_string());
+
+        self.generate_mov_identifier(identifier, segment);
+    }
+
+    fn generate_bitwisenot_expr(
+        &mut self,
+        expr: Expr,
+        identifier: Option<String>,
+        segment: &mut Vec<String>,
+    ) {
         if let Expr::UnaryBitwiseNotExpr(exp) = expr {
-            self.generate_expr(*exp.operand);
-            self.segments.code_main.push("\tnot rax\n".to_string());
+            self.generate_expr(*exp.operand, identifier, segment);
+            segment.push("\tnot rax\n".to_string());
         } else {
-            self.generate_expr(expr);
+            self.generate_expr(expr, identifier, segment);
         }
     }
 
-    fn generate_var_declaration(&mut self, declaration: VarDeclaration) {
+    fn generate_var_declaration(
+        &mut self,
+        declaration: VarDeclaration,
+        segment: &mut Vec<String>,
+        parent: String,
+    ) {
         let identifier: String = declaration.identifier.unwrap();
         let data_size: &str = declaration.data_size.as_str();
         let declaration_value: Expr = *declaration.value;
@@ -413,7 +657,16 @@ impl<'a> X8664Generator<'a> {
         let assembly_line: String = match declaration_value.clone().kind() {
             NodeType::Identifier => {
                 if let Expr::Identifier(ident) = declaration_value.clone() {
-                    format!("\t{} {} {}\n", identifier, directive, ident.symbol)
+                    if !parent.is_empty() {
+                        self.local_identifier
+                            .insert(identifier.clone(), format!("{}_{}", parent, identifier));
+                        format!(
+                            "\t{}_{} {} {}\n",
+                            parent, identifier, directive, ident.symbol
+                        )
+                    } else {
+                        format!("\t{} {} {}\n", identifier, directive, ident.symbol)
+                    }
                 } else {
                     format!("")
                 }
@@ -424,68 +677,133 @@ impl<'a> X8664Generator<'a> {
                         .value
                         .parse()
                         .expect("Unable to parse numeric value");
-                    format!("\t{} {} {}\n", identifier, directive, value)
+                    if !parent.is_empty() {
+                        self.local_identifier
+                            .insert(identifier.clone(), format!("{}_{}", parent, identifier));
+                        format!("\t{}_{} {} {}\n", parent, identifier, directive, value)
+                    } else {
+                        format!("\t{} {} {}\n", identifier, directive, value)
+                    }
                 } else {
                     format!("")
                 }
             }
             NodeType::StringLiteral => {
                 if let Expr::StringLiteral(str_lit) = declaration_value.clone() {
-                    format!(
-                        "\t{} {} \"{}\", 0x0\n",
-                        identifier, directive, str_lit.value
-                    )
+                    if !parent.is_empty() {
+                        self.local_identifier
+                            .insert(identifier.clone(), format!("{}_{}", parent, identifier));
+                        format!(
+                            "\t{}_{} {} \"{}\", 0x0\n",
+                            parent, identifier, directive, str_lit.value
+                        )
+                    } else {
+                        format!(
+                            "\t{} {} \"{}\", 0x0\n",
+                            identifier, directive, str_lit.value
+                        )
+                    }
                 } else {
                     format!("")
                 }
             }
-            NodeType::TrueLiteral => {
-                format!("\t{} db 0x1\n", identifier)
+            NodeType::BooleanLiteral => {
+                if let Expr::BooleanLiteral(boolean) = declaration_value.clone() {
+                    if !parent.is_empty() {
+                        self.local_identifier
+                            .insert(identifier.clone(), format!("{}_{}", parent, identifier));
+                        format!(
+                            "\t{}_{} {} \"{}\", 0x0\n",
+                            parent, identifier, directive, boolean.value
+                        )
+                    } else {
+                        format!(
+                            "\t{} {} \"{}\", 0x0\n",
+                            identifier, directive, boolean.value
+                        )
+                    }
+                } else {
+                    format!("")
+                }
             }
-            NodeType::FalseLiteral => {
-                format!("\t{} db 0x0\n", identifier)
-            }
-            NodeType::NullLiteral => {
-                format!("\t{} {} 0\n", identifier, directive)
+            NodeType::VoidLiteral => {
+                if !parent.is_empty() {
+                    self.local_identifier
+                        .insert(identifier.clone(), format!("{}_{}", parent, identifier));
+
+                    format!("\t{}_{} {} 0\n", parent, identifier, directive)
+                } else {
+                    format!("\t{} db 0\n", identifier)
+                }
             }
             NodeType::BinaryExpr => {
-                self.segments
-                    .data
-                    .push(format!("\t{} {} 0\n", identifier, directive.clone()));
+                if !parent.is_empty() {
+                    self.local_identifier
+                        .insert(identifier.clone(), format!("{}_{}", parent, identifier));
+                    self.segments.data.push(format!(
+                        "\t{}_{} {} 0\n",
+                        parent,
+                        identifier,
+                        directive.clone()
+                    ));
+                } else {
+                    self.segments
+                        .data
+                        .push(format!("\t{} {} 0\n", identifier, directive.clone()));
+                }
                 let value_to_insert: (String, NodeType) =
                     (directive.clone(), declaration_value.clone().kind());
-                self.values.insert(identifier.clone(), value_to_insert);
-                self.generate_binary_expr(declaration_value.clone(), Some(identifier.clone()));
+                self.identifier.insert(identifier.clone(), value_to_insert);
+                self.generate_expr(declaration_value.clone(), Some(identifier.clone()), segment);
 
                 not_generated = false;
                 format!("")
             }
             NodeType::CallExpr => {
                 if let Expr::CallExpr(call) = declaration_value.clone() {
-                    self.generate_call_expr(call);
+                    self.generate_call_expr(call, segment);
 
                     let return_size = self.get_return_size(&directive);
-                    self.segments
-                        .code_main
-                        .push(format!("\tmov [{}], {}\n", identifier, return_size));
+                    segment.push(format!("\tmov [{}], {}\n", identifier, return_size));
                     self.memory_access = true;
-                    format!("\t{} {} 0x0\n", identifier, &directive)
+
+                    if !parent.is_empty() {
+                        self.local_identifier
+                            .insert(identifier.clone(), format!("{}_{}", parent, identifier));
+
+                        format!("\t{}_{} {} 0x0\n", parent, identifier, &directive)
+                    } else {
+                        format!("\t{} {} 0x0\n", identifier, &directive)
+                    }
                 } else {
                     format!("")
                 }
             }
-            _ => format!(
-                "\t{} {} {:?}\n",
-                identifier,
-                directive,
-                declaration_value.clone()
-            ),
+            _ => {
+                if !parent.is_empty() {
+                    format!(
+                        "\t{}_{} {} {:?}\n",
+                        parent,
+                        identifier,
+                        directive,
+                        declaration_value.clone()
+                    )
+                } else {
+                    format!(
+                        "\t{} {} {:?}\n",
+                        identifier,
+                        directive,
+                        declaration_value.clone()
+                    )
+                }
+            }
         };
 
         if not_generated {
+            // mais ou menos quanto tempo até voce voltar? (responda no zap)
             self.segments.data.push(assembly_line);
             let value_to_insert: (String, NodeType) = (directive, declaration_value.clone().kind());
-            self.values.insert(identifier.clone(), value_to_insert);
+            self.identifier.insert(identifier.clone(), value_to_insert);
         }
     }
 
@@ -494,10 +812,8 @@ impl<'a> X8664Generator<'a> {
             Expr::Identifier(val) => (NodeType::Identifier, val.symbol),
             Expr::NumericLiteral(val) => (NodeType::NumericLiteral, val.value.to_string()),
             Expr::StringLiteral(val) => (NodeType::StringLiteral, val.value.to_string()),
-            Expr::NullLiteral(val) => (NodeType::NullLiteral, val.value.to_string()),
-            Expr::TrueLiteral(val) => (NodeType::TrueLiteral, val.value),
-            Expr::FalseLiteral(val) => (NodeType::FalseLiteral, val.value),
-            _ => (NodeType::UndefinedLiteral, "undefined".to_string()),
+            Expr::BooleanLiteral(val) => (NodeType::BooleanLiteral, val.value),
+            _ => (NodeType::VoidLiteral, "()".to_string()),
         }
     }
 
@@ -521,6 +837,17 @@ impl<'a> X8664Generator<'a> {
         }
     }
 
+    fn get_full_return_size(&mut self, directive: &str) -> String {
+        match directive {
+            "byte" => String::from("al"),
+            "word" => String::from("ax"),
+            "dword" => String::from("eax"),
+            "qword" => String::from("rax"),
+            "auto" => String::from("rax"),
+            _ => String::from("_Invalid"),
+        }
+    }
+
     fn get_return_size(&mut self, directive: &str) -> String {
         match directive {
             "db" => String::from("al"),
@@ -532,6 +859,6 @@ impl<'a> X8664Generator<'a> {
     }
 
     fn get_directive(&self, key: &str) -> Option<String> {
-        self.values.get(key).map(|(s, _)| s.clone())
+        self.identifier.get(key).map(|(s, _)| s.clone())
     }
 }
