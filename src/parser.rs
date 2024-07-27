@@ -2,6 +2,7 @@ use crate::ast::*;
 use crate::colors::{escape, printc};
 use crate::datatype::*;
 use crate::lexer::{Token, TokenType};
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 pub struct Parser {
@@ -55,10 +56,10 @@ impl Parser {
     fn parse_data_type(&mut self) -> Datatype {
         // Match para determinar o tipo de token atual
         let data_type: Datatype = match self.at().token_type {
-            // Se o token atual for Any, Text, Integer, Decimal ou Bool
-            TokenType::Any => {
+            // Se o token atual for Void, Text, Integer, Decimal ou Bool
+            TokenType::Void => {
                 self.eat();
-                Datatype::Any
+                Datatype::Void
             }
             TokenType::Text => {
                 self.eat();
@@ -387,7 +388,7 @@ impl Parser {
                         || self.next().token_type == TokenType::OParen
                         || self.next().token_type == TokenType::CBrace
                     {
-                        let expr: Option<Expr> = Some(self.parse_call_member_expr());
+                        let expr: Option<Expr> = Some(self.parse_call_member_expr(None));
 
                         column.1 = self.at().column.1 - 1;
                         position.1 = self.at().position.1 - 1;
@@ -448,9 +449,9 @@ impl Parser {
                     let mut position_var: (usize, usize) = self.at().position;
                     let lineno: usize = self.at().lineno;
                     // Placeholder inicial para a variável expr.
-                    let mut expr: Expr = Expr::NullLiteral(NullLiteral {
-                        kind: NodeType::NullLiteral,
-                        value: "null",
+                    let mut expr: Expr = Expr::VoidLiteral(VoidLiteral {
+                        kind: NodeType::VoidLiteral,
+                        value: "()",
                         typ: Some(Datatype::_NOTYPE),
                         column,
                         position,
@@ -486,7 +487,7 @@ impl Parser {
                                     kind: NodeType::CallExpr,
                                     caller: Box::new(expr),
                                     args,
-                                    typ: None,
+                                    typ: RefCell::new(None),
                                     column,
                                     position,
                                     lineno,
@@ -514,16 +515,15 @@ impl Parser {
                                             data_size: "auto".to_string(),
                                             data_type,
                                             identifier: Some(identifier),
-                                            value: Box::new(Expr::UndefinedLiteral(
-                                                UndefinedLiteral {
-                                                    kind: NodeType::UndefinedLiteral,
-                                                    value: "undefined",
-                                                    typ: Some(Datatype::Any),
-                                                    column: self.at().column,
-                                                    position: self.at().position,
-                                                    lineno,
-                                                },
-                                            )),
+                                            value: Box::new(Expr::VoidLiteral(VoidLiteral {
+                                                kind: NodeType::VoidLiteral,
+                                                value: "()",
+                                                typ: Some(Datatype::Void),
+                                                column: self.at().column,
+                                                position: self.at().position,
+                                                lineno,
+                                            })),
+                                            inferred: false,
                                             column,
                                             position,
                                             lineno,
@@ -564,10 +564,12 @@ impl Parser {
                                             data_type,
                                             identifier: Some(identifier),
                                             value,
+                                            inferred: false,
                                             column: column_var,
                                             position: position_var,
                                             lineno,
                                         })),
+
                                         return_stmt: None,
                                         column,
                                         position,
@@ -736,7 +738,7 @@ impl Parser {
         let lineno: usize = self.at().lineno;
 
         self.eat();
-        println!("{}", self.at().value);
+
         let identifier: String = self.eat().value;
 
         column_val.1 = self.at().column.1 - 1;
@@ -753,16 +755,17 @@ impl Parser {
                     kind: NodeType::VarDeclaration,
                     constant: false,
                     data_size: "auto".to_string(),
-                    data_type: Datatype::Any,
+                    data_type: Datatype::Void,
                     identifier: Some(identifier),
-                    value: Box::from(Expr::UndefinedLiteral(UndefinedLiteral {
-                        kind: NodeType::UndefinedLiteral,
-                        value: "undefined",
-                        typ: Some(Datatype::Any),
+                    value: Box::from(Expr::VoidLiteral(VoidLiteral {
+                        kind: NodeType::VoidLiteral,
+                        value: "()",
+                        typ: Some(Datatype::Void),
                         column: self.at().column,
                         position: self.at().position,
                         lineno,
                     })),
+                    inferred: false,
                     column,
                     position,
                     lineno,
@@ -795,14 +798,15 @@ impl Parser {
                         data_size: "auto".to_string(),
                         data_type,
                         identifier: Some(identifier),
-                        value: Box::from(Expr::UndefinedLiteral(UndefinedLiteral {
-                            kind: NodeType::UndefinedLiteral,
-                            value: "undefined",
-                            typ: Some(Datatype::Any),
+                        value: Box::from(Expr::VoidLiteral(VoidLiteral {
+                            kind: NodeType::VoidLiteral,
+                            value: "()",
+                            typ: Some(Datatype::Void),
                             column: self.at().column,
                             position: self.at().position,
                             lineno,
                         })),
+                        inferred: false,
                         column: column_val,
                         position: position_val,
                         lineno,
@@ -818,6 +822,7 @@ impl Parser {
                 // Parseia a expressão de valor
                 let value: Box<Expr>;
 
+                println!("{}", self.at().value);
                 match self.at().token_type {
                     TokenType::OBracket => {
                         value = Box::new(self.parse_array_expr());
@@ -832,6 +837,8 @@ impl Parser {
                 column_val.1 = self.at().column.1 - 1;
                 position_val.1 = self.at().position.1 - 1;
                 // Espera pelo ponto e vírgula ";"
+                println!("{}", self.at().value);
+
                 self.expect(TokenType::Semicolon, "\";\" Expected");
 
                 column.1 = self.at().column.1 - 1;
@@ -846,6 +853,7 @@ impl Parser {
                         data_type,
                         identifier: Some(identifier),
                         value,
+                        inferred: false,
                         column: column_val,
                         position: position_val,
                         lineno,
@@ -886,9 +894,10 @@ impl Parser {
                     kind: NodeType::VarDeclaration,
                     constant: false,
                     data_size: "auto".to_string(),
-                    data_type: Datatype::Any,
+                    data_type: Datatype::Void,
                     identifier: Some(identifier),
                     value,
+                    inferred: true,
                     column,
                     position,
                     lineno,
@@ -1064,7 +1073,7 @@ impl Parser {
                         kind: NodeType::ArrayAccess,
                         array: Box::new(array),
                         index: Box::new(index_expr),
-                        typ: None,
+                        typ: RefCell::new(None),
                         column: column_array,
                         position: position_array,
                         lineno,
@@ -1074,13 +1083,27 @@ impl Parser {
                     position,
                     lineno,
                 })
+            } else if self.at().token_type == TokenType::OParen
+                || self.at().token_type == TokenType::Dot
+                || self.at().token_type == TokenType::OBracket
+            {
+                let expr: Option<Expr> = Some(Expr::ArrayAccess(ArrayAccess {
+                    kind: NodeType::ArrayAccess,
+                    array: Box::new(array),
+                    index: Box::new(index_expr),
+                    typ: RefCell::new(None),
+                    column: column_array,
+                    position: position_array,
+                    lineno,
+                }));
+
+                self.parse_call_member_expr(expr)
             } else {
-                // Se não houver uma atribuição, retorna apenas a expressão de acesso a array
                 Expr::ArrayAccess(ArrayAccess {
                     kind: NodeType::ArrayAccess,
                     array: Box::new(array),
                     index: Box::new(index_expr),
-                    typ: None,
+                    typ: RefCell::new(None),
                     column: column_array,
                     position: position_array,
                     lineno,
@@ -1088,7 +1111,7 @@ impl Parser {
             }
         } else {
             // Se não houver abertura de colchete, retorna apenas a expressão do objeto/array
-            self.parse_call_member_expr()
+            self.parse_call_member_expr(None)
         }
     }
 
@@ -1295,7 +1318,7 @@ impl Parser {
                 left: Box::new(expr),
                 right: Box::new(right),
                 operator,
-                typ: None,
+                typ: RefCell::new(None),
                 column,
                 position,
                 lineno,
@@ -1327,7 +1350,7 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
-                typ: None,
+                typ: RefCell::new(None),
                 column,
                 position,
                 lineno,
@@ -1361,7 +1384,7 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
-                typ: None,
+                typ: RefCell::new(None),
                 column,
                 position,
                 lineno,
@@ -1406,12 +1429,10 @@ impl Parser {
         let lineno: usize = self.at().lineno;
 
         self.eat(); // Consome o token "import"
-        self.expect(TokenType::OParen, "\"(\" Expected."); // Verifica e consome o token "("
-        self.expect(TokenType::OBracket, "\"[\" Expected."); // Verifica e consome o token "["
 
         let mut paths: HashMap<StringLiteral, Option<Identifier>> = HashMap::new();
 
-        while self.at().token_type != TokenType::CBracket {
+        while self.at().token_type != TokenType::Semicolon {
             let column_s: (usize, usize) = self.at().column;
             let position_s: (usize, usize) = self.at().position;
             let lineno_s: usize = self.at().lineno;
@@ -1446,7 +1467,7 @@ impl Parser {
                 alias = Some(Identifier {
                     kind: NodeType::Identifier,
                     symbol: alias_value,
-                    typ: None,
+                    typ: RefCell::new(None),
                     column: column_i,
                     position: position_i,
                     lineno: lineno_i,
@@ -1460,8 +1481,6 @@ impl Parser {
             }
         }
 
-        self.expect(TokenType::CBracket, "\"]\" Expected."); // Verifica e consome o token "]"
-        self.expect(TokenType::CParen, "\")\" Expected."); // Verifica e consome o token ")"
         column_import.1 = self.at().column.1 - 1;
         position_import.1 = self.at().position.1 - 1;
         self.expect(TokenType::Semicolon, "\";\" Expected."); // Verifica e consome o token ";"
@@ -1536,7 +1555,11 @@ impl Parser {
             };
         }
         // Usa parse_call_member_expr para analisar a expressão de retorno completa
-        let expr: Expr = self.parse_call_member_expr();
+        let expr: Expr = match self.at().token_type {
+            TokenType::OBracket => self.parse_array_expr(),
+            TokenType::OBrace => self.parse_object_expr(),
+            _ => *self.parse_ternary_expr(),
+        };
 
         if self.tokens.get(self.index - 1).unwrap().token_type == TokenType::Semicolon {
             column.1 = self.at().column.1 - 2;
@@ -1573,8 +1596,7 @@ impl Parser {
         let name: String = self
             .expect(TokenType::Identifier, "Function name expected") // Analisa e armazena o nome da função
             .value;
-        //oi1
-        let mut parameters: Vec<(String, Datatype, String)> = Vec::new(); // Inicializa um vetor para armazenar os parâmetros da função
+        let mut parameters: Vec<(String, String, Datatype)> = Vec::new(); // Inicializa um vetor para armazenar os parâmetros da função
 
         // Verifica se há parênteses para delimitar os parâmetros
         if self.at().token_type == TokenType::OParen {
@@ -1587,25 +1609,22 @@ impl Parser {
             } else {
                 // Loop para analisar cada parâmetro
                 while self.at().token_type != TokenType::CParen {
+                    let size: String = match self.at().token_type {
+                        TokenType::Byte | TokenType::Word | TokenType::Dword | TokenType::Qword => {
+                            self.eat().value
+                        }
+                        _ => "auto".to_string(),
+                    };
+
                     let identifier: String = self
                         .expect(TokenType::Identifier, "Parameter name expected") // Analisa e armazena o nome do parâmetro
                         .value;
 
-                    let mut size: String = "auto".to_string(); // Obtém o tamanho do parâmetro
-                    let mut data_type: Datatype = Datatype::Any; // Analisa e obtém o tipo de dados do parâmetro
+                    let mut data_type: Datatype = Datatype::Void; // Analisa e obtém o tipo de dados do parâmetro
                     if self.at().token_type == TokenType::Colon {
                         self.eat();
                         match self.at().token_type {
-                            TokenType::Auto
-                            | TokenType::Byte
-                            | TokenType::Word
-                            | TokenType::Dword
-                            | TokenType::Qword => {
-                                size = self.eat().value;
-                                data_type = self.parse_data_type()
-                            }
-                            TokenType::Any
-                            | TokenType::Text
+                            TokenType::Text
                             | TokenType::Integer
                             | TokenType::Decimal
                             | TokenType::Array
@@ -1613,13 +1632,11 @@ impl Parser {
                             | TokenType::LessThan => {
                                 data_type = self.parse_data_type();
                             }
-                            _ => {
-                                self.error("Unexpected token ");
-                            }
+                            _ => data_type = Datatype::Void,
                         }
                     }
 
-                    parameters.push((size, data_type, identifier)); // Adiciona o parâmetro ao vetor de parâmetros
+                    parameters.push((size, identifier, data_type)); // Adiciona o parâmetro ao vetor de parâmetros
 
                     if self.at().token_type == TokenType::Comma {
                         self.eat(); // Consome a vírgula entre os parâmetros
@@ -1633,11 +1650,19 @@ impl Parser {
         }
 
         let mut return_size: String = "auto".to_string();
-        let mut return_type: Datatype = Datatype::Any;
+        let mut return_type: Datatype = Datatype::Void;
 
         if self.at().token_type == TokenType::Colon {
             self.eat();
             match self.at().token_type {
+                TokenType::Void
+                | TokenType::Text
+                | TokenType::Integer
+                | TokenType::Decimal
+                | TokenType::Array
+                | TokenType::Object => {
+                    return_type = self.parse_data_type();
+                }
                 TokenType::Auto
                 | TokenType::Byte
                 | TokenType::Word
@@ -1645,7 +1670,7 @@ impl Parser {
                 | TokenType::Qword => {
                     return_size = self.eat().value;
                     match self.at().token_type {
-                        TokenType::Any
+                        TokenType::Void
                         | TokenType::Text
                         | TokenType::Integer
                         | TokenType::Decimal
@@ -1655,14 +1680,6 @@ impl Parser {
                         }
                         _ => self.error("Expected type after size."),
                     }
-                }
-                TokenType::Any
-                | TokenType::Text
-                | TokenType::Integer
-                | TokenType::Decimal
-                | TokenType::Array
-                | TokenType::Object => {
-                    return_type = self.parse_data_type();
                 }
                 _ => self.error("Unexpected token "),
             }
@@ -1867,6 +1884,7 @@ impl Parser {
                 data_type,
                 identifier,
                 value,
+                inferred: false,
                 column,
                 position,
                 lineno,
@@ -1906,6 +1924,7 @@ impl Parser {
                 data_type,
                 identifier: Some(identifier),
                 value,
+                inferred: false,
                 column,
                 position,
                 lineno,
@@ -1956,7 +1975,7 @@ impl Parser {
             condition: Box::new(condition),
             consequent,
             alternate,
-            typ: None,
+            typ: RefCell::new(None),
             column,
             position,
             lineno,
@@ -2018,7 +2037,7 @@ impl Parser {
                 Expr::UnaryMinusExpr(UnaryMinusExpr {
                     kind: NodeType::UnaryMinusExpr,
                     operand: Box::new(operand),
-                    typ: None,
+                    typ: RefCell::new(None),
                     column,
                     position,
                     lineno,
@@ -2116,7 +2135,7 @@ impl Parser {
             _ => (),
         }
 
-        let mut expr: Expr = self.parse_call_member_expr(); // Analise acesso de array
+        let mut expr: Expr = self.parse_call_member_expr(None); // Analise acesso de array
 
         loop {
             match self.at().token_type {
@@ -2166,7 +2185,19 @@ impl Parser {
             return self.parse_unary_expr();
         }
 
-        self.parse_assignment_expr()
+        match self.next().token_type {
+            TokenType::Plus
+            | TokenType::Minus
+            | TokenType::Mul
+            | TokenType::Div
+            | TokenType::Mod
+            | TokenType::Power
+            | TokenType::IntegerDiv
+            | TokenType::BitwiseAnd
+            | TokenType::BitwiseOr
+            | TokenType::BitwiseXor => self.parse_bitwise_expr(),
+            _ => self.parse_assignment_expr(),
+        }
     }
 
     // Método para analisar uma expressão de atribuição
@@ -2184,7 +2215,6 @@ impl Parser {
                 TokenType::OBrace => self.parse_object_expr(),
                 _ => *self.parse_ternary_expr(),
             };
-            println!("{:#?}", right);
 
             while self.at().token_type == TokenType::BitwiseOr
                 || self.at().token_type == TokenType::BitwiseAnd
@@ -2255,7 +2285,7 @@ impl Parser {
         Expr::ArrayExpr(ArrayExpr {
             kind: NodeType::ArrayExpr,
             elements: array,
-            typ: None,
+            typ: RefCell::new(None),
             column,
             position,
             lineno,
@@ -2337,7 +2367,7 @@ impl Parser {
         Expr::ObjectLiteral(ObjectLiteral {
             kind: NodeType::ObjectLiteral,
             properties,
-            typ: None,
+            typ: RefCell::new(None),
             column,
             position,
             lineno,
@@ -2370,7 +2400,7 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
-                typ: None,
+                typ: RefCell::new(None),
                 column,
                 position,
                 lineno,
@@ -2401,7 +2431,7 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
-                typ: None,
+                typ: RefCell::new(None),
                 column,
                 position,
                 lineno,
@@ -2436,7 +2466,7 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
-                typ: None,
+                typ: RefCell::new(None),
                 column,
                 position,
                 lineno,
@@ -2452,12 +2482,12 @@ impl Parser {
         let mut position: (usize, usize) = self.at().position;
         let lineno: usize = self.at().lineno;
 
-        let mut left: Expr = self.parse_call_member_expr(); // Analisa a expressão de chamada/membro à esquerda
+        let mut left: Expr = self.parse_call_member_expr(None); // Analisa a expressão de chamada/membro à esquerda
 
         // Loop para lidar com operadores de exponenciação
         while self.at().token_type == TokenType::Power {
             let operator: String = self.eat().value; // Consome o operador
-            let right: Expr = self.parse_call_member_expr(); // Analisa a expressão de chamada/membro à direita
+            let right: Expr = self.parse_call_member_expr(None); // Analisa a expressão de chamada/membro à direita
 
             column.1 = self.at().column.1 - 1;
             position.1 = self.at().position.1 - 1;
@@ -2467,7 +2497,7 @@ impl Parser {
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
-                typ: None,
+                typ: RefCell::new(None),
                 column,
                 position,
                 lineno,
@@ -2478,8 +2508,15 @@ impl Parser {
     }
 
     // Método para analisar uma expressão de chamada ou membro
-    fn parse_call_member_expr(&mut self) -> Expr {
-        let mut expr: Expr = self.parse_primary_expr(); // Começa com uma expressão primária
+    fn parse_call_member_expr(&mut self, statement: Option<Expr>) -> Expr {
+        let mut expr: Expr;
+
+        if let Some(stmt) = statement {
+            expr = stmt;
+        } else {
+            expr = self.parse_primary_expr();
+        }
+
         loop {
             match self.at().token_type {
                 TokenType::Dot => {
@@ -2499,12 +2536,12 @@ impl Parser {
                         property: Box::new(Expr::Identifier(Identifier {
                             kind: NodeType::Identifier,
                             symbol: property.value,
-                            typ: None,
+                            typ: RefCell::new(None),
                             column: column_identifier,
                             position: position_identifier,
                             lineno,
                         })),
-                        typ: None,
+                        typ: RefCell::new(None),
                         column: column_member,
                         position: position_member,
                         lineno,
@@ -2516,6 +2553,10 @@ impl Parser {
 
                 TokenType::OBracket => {
                     expr = self.parse_array_access_expr(expr);
+                }
+                TokenType::Semicolon => {
+                    // self.eat();
+                    return expr;
                 }
                 _ => break, // Sai do loop se não houver mais operações
             }
@@ -2540,7 +2581,7 @@ impl Parser {
             kind: NodeType::CallExpr,
             caller: Box::new(caller),
             args,
-            typ: None,
+            typ: RefCell::new(None),
             column,
             position,
             lineno,
@@ -2618,7 +2659,7 @@ impl Parser {
                 return Expr::Identifier(Identifier {
                     kind: NodeType::Identifier,
                     symbol: self.eat().value, // Consome o token e obtém o valor do identificador
-                    typ: None,
+                    typ: RefCell::new(None),
                     column,
                     position,
                     lineno,
@@ -2659,26 +2700,10 @@ impl Parser {
                 let lineno: usize = self.at().lineno;
                 // Se for nulo, consome o token e cria uma expressão de literal nulo
                 self.eat();
-                return Expr::NullLiteral(NullLiteral {
-                    kind: NodeType::NullLiteral,
-                    value: "Null", // Define o valor como "Null"
+                return Expr::VoidLiteral(VoidLiteral {
+                    kind: NodeType::VoidLiteral,
+                    value: "()", // Define o valor como "void"
                     typ: Some(Datatype::_NOTYPE),
-                    column,
-                    position,
-                    lineno,
-                });
-            }
-
-            // Se for um undefined
-            TokenType::Undefined => {
-                let column: (usize, usize) = self.at().column;
-                let position: (usize, usize) = self.at().position;
-                let lineno: usize = self.at().lineno;
-                self.eat();
-                return Expr::UndefinedLiteral(UndefinedLiteral {
-                    kind: NodeType::UndefinedLiteral,
-                    value: "undefined",
-                    typ: Some(Datatype::Any),
                     column,
                     position,
                     lineno,
@@ -2691,8 +2716,8 @@ impl Parser {
                 let position: (usize, usize) = self.at().position;
                 let lineno: usize = self.at().lineno;
                 self.eat();
-                return Expr::TrueLiteral(TrueLiteral {
-                    kind: NodeType::TrueLiteral,
+                return Expr::BooleanLiteral(BooleanLiteral {
+                    kind: NodeType::BooleanLiteral,
                     value: "true".to_string(),
                     typ: Some(Datatype::Boolean),
                     column,
@@ -2707,8 +2732,8 @@ impl Parser {
                 let position: (usize, usize) = self.at().position;
                 let lineno: usize = self.at().lineno;
                 self.eat();
-                return Expr::FalseLiteral(FalseLiteral {
-                    kind: NodeType::FalseLiteral,
+                return Expr::BooleanLiteral(BooleanLiteral {
+                    kind: NodeType::BooleanLiteral,
                     value: "false".to_string(),
                     typ: Some(Datatype::Boolean),
                     column,
@@ -2758,7 +2783,7 @@ impl Parser {
                     return Expr::TupleLiteral(TupleLiteral {
                         kind: NodeType::TupleLiteral,
                         value,
-                        typ: None,
+                        typ: RefCell::new(None),
                         column,
                         position,
                         lineno,
@@ -2776,9 +2801,9 @@ impl Parser {
                 self.error(&format!("Unexpected token: {:?}", self.at().token_type)); // Gera um erro indicando um token inesperado
 
                 // Retorna uma expressão nula como fallback
-                return Expr::NullLiteral(NullLiteral {
-                    kind: NodeType::NullLiteral,
-                    value: "null",
+                return Expr::VoidLiteral(VoidLiteral {
+                    kind: NodeType::VoidLiteral,
+                    value: "()",
                     typ: Some(Datatype::_NOTYPE),
                     column,
                     position,
