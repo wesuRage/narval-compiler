@@ -1,4 +1,5 @@
 use crate::datatype::Datatype;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
@@ -17,14 +18,12 @@ pub enum NodeType {
     WhileStmt,
 
     Identifier,
-    NullLiteral,
-    UndefinedLiteral,
+    VoidLiteral,
     NumericLiteral,
     StringLiteral,
     Property,
+    BooleanLiteral,
     ObjectLiteral,
-    TrueLiteral,
-    FalseLiteral,
     TupleLiteral,
     Enum,
 
@@ -65,14 +64,12 @@ pub enum Expr {
     WhileStmt(Box<WhileStmt>),
 
     Identifier(Identifier),
-    NullLiteral(NullLiteral),
-    UndefinedLiteral(UndefinedLiteral),
+    VoidLiteral(VoidLiteral),
     NumericLiteral(NumericLiteral),
     StringLiteral(StringLiteral),
     ObjectLiteral(ObjectLiteral),
-    TrueLiteral(TrueLiteral),
-    FalseLiteral(FalseLiteral),
     TupleLiteral(TupleLiteral),
+    BooleanLiteral(BooleanLiteral),
     Enum(Enum),
 
     VarDeclaration(VarDeclaration),
@@ -113,11 +110,11 @@ impl Expr {
             Expr::AssignmentExpr(_) => NodeType::AssignmentExpr, // Se for uma expressão de atribuição
             Expr::BinaryExpr(_) => NodeType::BinaryExpr,         // Se for uma expressão binária
             Expr::BlockExpr(_) => NodeType::BlockExpr,           // Se for uma expressão de bloco
+            Expr::BooleanLiteral(_) => NodeType::BooleanLiteral, // Se for uma expressão booleana
             Expr::BreakExpr(_) => NodeType::BreakExpr,           // Se for um break
             Expr::CallExpr(_) => NodeType::CallExpr,             // Se for uma chamada de função
             Expr::Enum(_) => NodeType::Enum,                     // Se for um enum
             Expr::ExportStmt(_) => NodeType::ExportStmt, // Se for uma declaração de exportação
-            Expr::FalseLiteral(_) => NodeType::FalseLiteral, // Se for false
             Expr::ForStmt(_) => NodeType::ForStmt,       // Se for um for statement
             Expr::FunctionDeclaration(_) => NodeType::FunctionDeclaration, // Se for uma declaração de função
             Expr::Identifier(_) => NodeType::Identifier, // Se for um identificador
@@ -127,7 +124,7 @@ impl Expr {
             Expr::LoopStmt(_) => NodeType::LoopStmt, // Se for um loop statement
             Expr::MemberExpr(_) => NodeType::MemberExpr, // Se for uma expressão de membro
             Expr::MovStmt(_) => NodeType::MovStmt, // Se for um statement de mov em assembly
-            Expr::NullLiteral(_) => NodeType::NullLiteral, // Se for um literal nulo
+            Expr::VoidLiteral(_) => NodeType::VoidLiteral, // Se for um literal nulo
             Expr::NumericLiteral(_) => NodeType::NumericLiteral, // Se for um literal numérico
             Expr::ObjectLiteral(_) => NodeType::ObjectLiteral, // Se for um literal de objeto
             Expr::PostDecrementExpr(_) => NodeType::PostDecrementExpr, // Se for uma expressão como x--
@@ -136,10 +133,8 @@ impl Expr {
             Expr::PreIncrementExpr(_) => NodeType::PreIncrementExpr, // Se for uma expressão como ++x
             Expr::RangeExpr(_) => NodeType::RangeExpr, // Se for uma expressão de intervalo ou intervalo incluso
             Expr::StringLiteral(_) => NodeType::StringLiteral, // Se for um literal de string
-            Expr::TrueLiteral(_) => NodeType::TrueLiteral, // Se for true
             Expr::TernaryExpr(_) => NodeType::TernaryExpr, // Se for uma expressão ternária
             Expr::TupleLiteral(_) => NodeType::TupleLiteral, // Se for uma tupla
-            Expr::UndefinedLiteral(_) => NodeType::UndefinedLiteral, // Se for undefined
             Expr::UnaryBitwiseNotExpr(_) => NodeType::UnaryBitwiseNotExpr, // Se for uma expressão de bitwise not
             Expr::UnaryMinusExpr(_) => NodeType::UnaryMinusExpr, // Se for uma expressão como -x
             Expr::UnitDeclaration(_) => NodeType::UnitDeclaration, // Se for uma declaração de unit
@@ -159,11 +154,11 @@ impl Expr {
             Expr::AssignmentExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão de atribuição
             Expr::BinaryExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão binária
             Expr::BlockExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão de bloco
-            Expr::BreakExpr(e) => (e.position, e.column, e.lineno), // Se for um break
-            Expr::CallExpr(e) => (e.position, e.column, e.lineno),  // Se for uma chamada de função
-            Expr::Enum(e) => (e.position, e.column, e.lineno),      // Se for um enum
+            Expr::BooleanLiteral(e) => (e.position, e.column, e.lineno), // Se for uma expressão booleana
+            Expr::BreakExpr(e) => (e.position, e.column, e.lineno),      // Se for um break
+            Expr::CallExpr(e) => (e.position, e.column, e.lineno), // Se for uma chamada de função
+            Expr::Enum(e) => (e.position, e.column, e.lineno),     // Se for um enum
             Expr::ExportStmt(e) => (e.position, e.column, e.lineno), // Se for uma declaração de exportação
-            Expr::FalseLiteral(e) => (e.position, e.column, e.lineno), // Se for false
             Expr::ForStmt(e) => (e.position, e.column, e.lineno),    // Se for um for statement
             Expr::FunctionDeclaration(e) => (e.position, e.column, e.lineno), // Se for uma declaração de função
             Expr::Identifier(e) => (e.position, e.column, e.lineno), // Se for um identificador
@@ -173,7 +168,7 @@ impl Expr {
             Expr::LoopStmt(e) => (e.position, e.column, e.lineno),       // Se for um loop statement
             Expr::MemberExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão de membro
             Expr::MovStmt(e) => (e.position, e.column, e.lineno), // Se for um statement de mov em assembly
-            Expr::NullLiteral(e) => (e.position, e.column, e.lineno), // Se for um literal nulo
+            Expr::VoidLiteral(e) => (e.position, e.column, e.lineno), // Se for um literal nulo
             Expr::NumericLiteral(e) => (e.position, e.column, e.lineno), // Se for um literal numérico
             Expr::ObjectLiteral(e) => (e.position, e.column, e.lineno), // Se for um literal de objeto
             Expr::PostDecrementExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão como x--
@@ -182,10 +177,8 @@ impl Expr {
             Expr::PreIncrementExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão como ++x
             Expr::RangeExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão de intervalo ou intervalo incluso
             Expr::StringLiteral(e) => (e.position, e.column, e.lineno), // Se for um literal de string
-            Expr::TrueLiteral(e) => (e.position, e.column, e.lineno),   // Se for true
             Expr::TernaryExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão ternária
             Expr::TupleLiteral(e) => (e.position, e.column, e.lineno), // Se for uma tupla
-            Expr::UndefinedLiteral(e) => (e.position, e.column, e.lineno), // Se for undefined
             Expr::UnaryBitwiseNotExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão de bitwise not
             Expr::UnaryMinusExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão como -x
             Expr::UnitDeclaration(e) => (e.position, e.column, e.lineno), // Se for uma declaração de unit
@@ -275,17 +268,7 @@ pub struct MovStmt {
 }
 
 #[derive(Debug, Clone)]
-pub struct TrueLiteral {
-    pub kind: NodeType,
-    pub value: String,
-    pub typ: Option<Datatype>,
-    pub column: (usize, usize),
-    pub position: (usize, usize),
-    pub lineno: usize,
-}
-
-#[derive(Debug, Clone)]
-pub struct FalseLiteral {
+pub struct BooleanLiteral {
     pub kind: NodeType,
     pub value: String,
     pub typ: Option<Datatype>,
@@ -334,7 +317,7 @@ pub struct PostDecrementExpr {
 pub struct UnaryMinusExpr {
     pub kind: NodeType,
     pub operand: Box<Expr>,
-    pub typ: Option<Datatype>,
+    pub typ: RefCell<Option<Datatype>>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -401,7 +384,7 @@ pub struct ReturnStmt {
 pub struct Identifier {
     pub kind: NodeType,
     pub symbol: String,
-    pub typ: Option<Datatype>,
+    pub typ: RefCell<Option<Datatype>>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -458,17 +441,7 @@ impl Hash for StringLiteral {
 }
 
 #[derive(Debug, Clone)]
-pub struct NullLiteral {
-    pub kind: NodeType,
-    pub value: &'static str,
-    pub typ: Option<Datatype>,
-    pub column: (usize, usize),
-    pub position: (usize, usize),
-    pub lineno: usize,
-}
-
-#[derive(Debug, Clone)]
-pub struct UndefinedLiteral {
+pub struct VoidLiteral {
     pub kind: NodeType,
     pub value: &'static str,
     pub typ: Option<Datatype>,
@@ -491,7 +464,7 @@ pub struct NumericLiteral {
 pub struct TupleLiteral {
     pub kind: NodeType,
     pub value: Vec<Expr>,
-    pub typ: Option<Datatype>,
+    pub typ: RefCell<Option<Datatype>>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -511,7 +484,7 @@ pub struct Property {
 pub struct ObjectLiteral {
     pub kind: NodeType,
     pub properties: Vec<Property>,
-    pub typ: Option<Datatype>,
+    pub typ: RefCell<Option<Datatype>>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -534,6 +507,7 @@ pub struct VarDeclaration {
     pub data_size: String,
     pub data_type: Datatype,
     pub identifier: Option<String>,
+    pub inferred: bool,
     pub value: Box<Expr>,
     pub column: (usize, usize),
     pub position: (usize, usize),
@@ -546,7 +520,7 @@ pub struct FunctionDeclaration {
     pub return_size: String,
     pub return_type: Datatype,
     pub name: String,
-    pub parameters: Vec<(String, Datatype, String)>,
+    pub parameters: Vec<(String, String, Datatype)>,
     pub body: Vec<Stmt>,
     pub column: (usize, usize),
     pub position: (usize, usize),
@@ -569,7 +543,7 @@ pub struct BinaryExpr {
     pub left: Box<Expr>,
     pub right: Box<Expr>,
     pub operator: String,
-    pub typ: Option<Datatype>,
+    pub typ: RefCell<Option<Datatype>>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -580,7 +554,7 @@ pub struct MemberExpr {
     pub kind: NodeType,
     pub object: Box<Expr>,
     pub property: Box<Expr>,
-    pub typ: Option<Datatype>,
+    pub typ: RefCell<Option<Datatype>>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -591,7 +565,7 @@ pub struct CallExpr {
     pub kind: NodeType,
     pub args: Vec<Box<Expr>>,
     pub caller: Box<Expr>,
-    pub typ: Option<Datatype>,
+    pub typ: RefCell<Option<Datatype>>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -632,7 +606,7 @@ pub struct TernaryExpr {
     pub condition: Box<Expr>,
     pub consequent: Box<Expr>,
     pub alternate: Box<Expr>,
-    pub typ: Option<Datatype>,
+    pub typ: RefCell<Option<Datatype>>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -660,7 +634,7 @@ pub struct AsmStmt {
 pub struct ArrayExpr {
     pub kind: NodeType,
     pub elements: Vec<Expr>,
-    pub typ: Option<Datatype>,
+    pub typ: RefCell<Option<Datatype>>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
@@ -669,9 +643,9 @@ pub struct ArrayExpr {
 #[derive(Debug, Clone)]
 pub struct ArrayAccess {
     pub kind: NodeType,
-    pub array: Box<Expr>,
+    pub array: Box<Expr>, // mano ce vai usar aquela função hash ainda? responde no zap
     pub index: Box<Expr>,
-    pub typ: Option<Datatype>,
+    pub typ: RefCell<Option<Datatype>>,
     pub column: (usize, usize),
     pub position: (usize, usize),
     pub lineno: usize,
