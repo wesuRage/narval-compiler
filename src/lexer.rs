@@ -4,7 +4,6 @@ use std::collections::HashMap;
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenType {
     And,
-    Any,
     Array,
     As,
     Asm,
@@ -95,9 +94,9 @@ pub enum TokenType {
     String,
     Text,
     True,
-    Undefined,
     Unit,
     Val,
+    Void,
     When,
     While,
     Word,
@@ -173,7 +172,6 @@ impl TokenDefinitions {
         literals.insert("&&", TokenType::And);
 
         keywords.insert("Array", TokenType::Array);
-        keywords.insert("any", TokenType::Any);
         keywords.insert("as", TokenType::As);
         keywords.insert("asm", TokenType::Asm);
         keywords.insert("auto", TokenType::Auto);
@@ -207,9 +205,9 @@ impl TokenDefinitions {
         keywords.insert("return", TokenType::Return);
         keywords.insert("text", TokenType::Text);
         keywords.insert("true", TokenType::True);
-        keywords.insert("undefined", TokenType::Undefined);
         keywords.insert("unit", TokenType::Unit);
         keywords.insert("val", TokenType::Val);
+        keywords.insert("void", TokenType::Void);
         keywords.insert("when", TokenType::When);
         keywords.insert("while", TokenType::While);
         keywords.insert("word", TokenType::Word);
