@@ -6,8 +6,8 @@ pub enum Datatype {
     Decimal,
     Text,
     Boolean,
-    Any,
-    Function((Vec<(String, Datatype)>, Box<Datatype>)),
+    Void,
+    Function((Vec<(String, Datatype)>, (String, Box<Datatype>))),
     Object(Box<Datatype>),
     Array(Box<Datatype>),
     Tuple(Box<Datatype>),
@@ -25,7 +25,7 @@ impl PartialEq for Datatype {
             | (Datatype::Decimal, Datatype::Decimal)
             | (Datatype::Text, Datatype::Text)
             | (Datatype::Boolean, Datatype::Boolean)
-            | (Datatype::Any, Datatype::Any)
+            | (Datatype::Void, Datatype::Void)
             | (Datatype::_NOTYPE, Datatype::_NOTYPE) => true,
 
             (Datatype::Function((params1, rettype1)), Datatype::Function((params2, rettype2))) => {
@@ -60,7 +60,7 @@ impl fmt::Display for Datatype {
             Datatype::Function((params, rettype)) => {
                 write!(f, "label:")?;
                 if params.len() == 0 {
-                    return write!(f, "{}", rettype);
+                    return write!(f, "{} {}", rettype.0, *rettype.1);
                 };
                 write!(f, "(")?;
                 let mut i = 1;
@@ -73,17 +73,18 @@ impl fmt::Display for Datatype {
 
                     i = i + 1;
                 }
-                write!(f, "):{}", rettype)
+                write!(f, "):{} {}", rettype.0, *rettype.1)
             }
             Datatype::_Multitype(types) => {
                 write!(f, "[")?;
-                let i = 1;
+                let mut i: usize = 1;
                 for t in types {
                     if i == types.len() {
                         write!(f, "{}", t)?;
                     } else {
                         write!(f, "{} | ", t)?;
                     }
+                    i += 1;
                 }
                 write!(f, "]")
             }
@@ -101,7 +102,7 @@ impl fmt::Display for Datatype {
                             } else {
                                 write!(f, "{}, ", t)?;
                             }
-                            i = i + 1;
+                            i += 1;
                         }
                     }
                     _ => {
@@ -135,7 +136,7 @@ impl Hash for Datatype {
             Datatype::Decimal => state.write_u8(1),
             Datatype::Text => state.write_u8(2),
             Datatype::Boolean => state.write_u8(3),
-            Datatype::Any => state.write_u8(4),
+            Datatype::Void => state.write_u8(4),
             Datatype::Function((params, rettype)) => {
                 state.write_u8(5);
                 for (name, dt) in params {
@@ -207,8 +208,8 @@ impl Datatype {
             | (Datatype::Text, Datatype::Boolean)
             | (Datatype::Boolean, Datatype::Boolean) => Ok(other.clone()),
 
-            (Datatype::Any, _) | (Datatype::_NOTYPE, _) => {
-                Err(format!("Impossible to cast \"null values\" for any type."))
+            (Datatype::Void, _) | (Datatype::_NOTYPE, _) => {
+                Err(format!("Impossible to cast \"null values\" for void type."))
             }
             _ => Ok(self.clone()),
         }
