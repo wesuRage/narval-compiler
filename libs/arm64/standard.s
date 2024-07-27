@@ -1,4 +1,4 @@
-.include "/root/rust/narval/libs/arm64/linux.s"
+.include "/var/lib/narval/libs/arm64/linux.s"
 
 .data
     __TEMP_STRING_BUFFER: .space 1024*1024
