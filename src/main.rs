@@ -13,16 +13,17 @@ mod lexer;
 mod parser;
 
 use ast::Program;
-use checker::Checker;
+use checker::{Checker, Namespace};
 use clap::{Args, Parser as ArgParser, Subcommand};
 use code_generator::generator::Generator;
 use colors::printc;
 use compiler::Compiler;
+use datatype::Datatype;
 use lexer::{Lexer, Token};
 use parser::Parser;
 use std::{fs, process::exit};
 
-/// Narval - the compiler for the Narval programming language.
+/// Narval - The compiler for the Narval programming language.
 #[derive(ArgParser)]
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
@@ -41,20 +42,8 @@ struct Cli {
     #[arg(short, long, action = clap::ArgAction::Count)]
     just_check: u8,
 
-    #[command(subcommand)]
-    entry: Commands,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    /// Compiles a source code and run
-    Run(AddArgs),
-}
-
-#[derive(Args)]
-struct AddArgs {
-    name: Option<String>,
-    just_check: Option<bool>,
+    #[arg(short, long)]
+    run: String,
 }
 
 fn expand_and_canonicalize_path(filename: &str) -> String {
@@ -80,16 +69,10 @@ fn expand_and_canonicalize_path(filename: &str) -> String {
 fn main() {
     let cli: Cli = Cli::parse();
     let justcheck = cli.just_check;
-    let filename: &String = match &cli.entry {
-        Commands::Run(add_args) => {
-            if let Some(name) = &add_args.name {
-                name
-            } else {
-                printc("%%rERROR:%%! %%yExpected input file.%%!");
-                exit(1);
-            }
-        }
-    };
+
+    let filename: &String = &cli.run;
+
+    // let filename: &String = &"./tests/main.nv".to_string();
 
     let full_path: String = expand_and_canonicalize_path(filename);
 
@@ -103,19 +86,40 @@ fn main() {
     let parser: Parser = Parser::new();
     let ast: Program = parser.produce_ast(tokens.clone(), &source_code);
 
-    let mut checker: Checker = Checker::new(ast.clone(), &source_code, &full_path);
+    let namespace: &mut Vec<Namespace> = &mut vec![Namespace::new()];
+    let mut checker: Checker = Checker::new(ast.clone(), namespace, &source_code, &full_path);
+
+    checker.inject_value(
+        "write".to_string(),
+        Datatype::Function((
+            vec![("argument".to_string(), Datatype::Text)],
+            ("word".to_string(), Box::new(Datatype::Void)),
+        )),
+    );
+    checker.inject_value(
+        "totxt".to_string(),
+        Datatype::Function((
+            vec![("value".to_string(), Datatype::Integer)],
+            ("word".to_string(), Box::new(Datatype::Text)),
+        )),
+    );
+
     loop {
-        println!("{:#?}", ast);
         for stmt in checker.current_body.2.clone() {
             checker.check(stmt);
         }
+
         if checker.bodies.len() == 1 {
             break;
         }
     }
+
+    // println!("{:#?}", ast.clone());
+
     if justcheck == 1 {
         return;
     }
+
     let mut generator: Generator = Generator::new(ast.clone(), &full_path, cli.arch);
     generator.generate();
 
