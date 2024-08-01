@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::io::Write;
+use std::process::exit;
 
 #[derive(Clone)]
 pub struct X8664Generator<'a> {
@@ -16,6 +17,7 @@ pub struct X8664Generator<'a> {
     pub identifier: HashMap<String, (String, NodeType)>,
     pub strings: HashMap<String, (String, Option<String>)>,
     pub unitialized_strings_counter: usize,
+    pub temp_return_counter: usize,
     pub memory_access: bool,
     pub current_string: Option<String>,
     pub current_int: i32,
@@ -53,6 +55,7 @@ impl<'a> X8664Generator<'a> {
         let identifier: HashMap<String, (String, NodeType)> = HashMap::new();
         let strings: HashMap<String, (String, Option<String>)> = HashMap::new();
         let unitialized_strings_counter: usize = 0;
+        let temp_return_counter: usize = 0;
         let memory_access: bool = false;
         let current_string: Option<String> = None;
         let current_int: i32 = 0;
@@ -68,6 +71,7 @@ impl<'a> X8664Generator<'a> {
             identifier,
             strings,
             unitialized_strings_counter,
+            temp_return_counter,
             memory_access,
             current_string,
             current_int,
@@ -153,11 +157,12 @@ impl<'a> X8664Generator<'a> {
                     _ => "dq",
                 };
 
-                self.segments
-                    .data
-                    .push(format!("\t__TEMP_RETURN {} 0\n", directive));
+                self.segments.data.push(format!(
+                    "\t__TEMP_RETURN_{} {} 0\n",
+                    self.temp_return_counter, directive
+                ));
                 self.identifier.insert(
-                    "__TEMP_RETURN".to_string(),
+                    format!("__TEMP_RETURN_{}", self.temp_return_counter),
                     (directive.to_string(), NodeType::VoidLiteral),
                 );
 
@@ -169,31 +174,55 @@ impl<'a> X8664Generator<'a> {
                             .map(|(_, stack)| stack);
 
                         if let Some(parameter) = param {
-                            segment.push(format!("\tmov [__TEMP_RETURN], {}\n", parameter))
+                            segment.push(format!(
+                                "\tmov [__TEMP_RETURN_{}], {}\n",
+                                self.temp_return_counter, parameter
+                            ))
                         } else {
                             let local: Option<&String> =
                                 self.local_identifier.get(&ident.symbol).map(|id| id);
                             if let Some(id) = local {
                                 segment.push(format!("\tmov rax, [{}]\n", id));
-                                segment.push("\tmov [__TEMP_RETURN], rax\n".to_string())
+                                segment.push(format!(
+                                    "\tmov [__TEMP_RETURN_{}], rax\n",
+                                    self.temp_return_counter,
+                                ))
                             } else {
                                 segment.push(format!("\tmov rax, [{}]\n", ident.symbol));
-                                segment.push("\tmov [__TEMP_RETURN], rax\n".to_string())
+                                segment.push(format!(
+                                    "\tmov [__TEMP_RETURN_{}], rax\n",
+                                    self.temp_return_counter,
+                                ))
                             }
                         }
                     }
 
-                    Expr::NumericLiteral(num) => {
-                        segment.push(format!("\tmov [__TEMP_RETURN], {}\n", num.value))
-                    }
+                    Expr::NumericLiteral(num) => segment.push(format!(
+                        "\tmov [__TEMP_RETURN_{}], {}\n",
+                        self.temp_return_counter, num.value
+                    )),
                     Expr::BinaryExpr(binop) => self.generate_expr(
                         Expr::BinaryExpr(binop),
-                        Some("__TEMP_RETURN".to_string()),
+                        Some(format!("__TEMP_RETURN_{}", self.temp_return_counter)),
                         segment,
                     ),
-                    _ => panic!("Expression not supported in return statement"),
+                    Expr::CallExpr(call) => {
+                        self.generate_call_expr(call, segment);
+                        segment.push(format!(
+                            "\tmov [__TEMP_RETURN_{}], rax\n",
+                            self.temp_return_counter,
+                        ))
+                    }
+                    _ => {
+                        println!("Expression not supported in return statement: {:?}", arg);
+                        exit(1)
+                    }
                 }
-                segment.push(format!("\tmov {}, [__TEMP_RETURN]\n", return_size))
+                segment.push(format!(
+                    "\tmov {}, [__TEMP_RETURN_{}]\n",
+                    return_size, self.temp_return_counter
+                ));
+                self.temp_return_counter += 1;
             } else {
                 segment.push(format!("\tmov {}, 0\n", return_size))
             }
@@ -369,23 +398,107 @@ impl<'a> X8664Generator<'a> {
                             let split_temp: Vec<&str> = id.split('[').collect();
                             let extracted_id = split_temp.last().unwrap().replace("]", "");
 
-                            let directive = self
-                                .identifier
-                                .get(&extracted_id)
-                                .map(|(d, _)| d.clone())
-                                .unwrap();
+                            let mut directive: String = "db".to_string();
+                            let registers = vec![
+                                "rdi", "rsi", "rdx", "r10", "r8", "r9", "r11", "r12", "r13", "r14",
+                                "r15", "rcx", "rbx",
+                            ];
+
+                            let mut not_register: bool = true;
+
+                            for register in registers {
+                                if register == &extracted_id {
+                                    not_register = false;
+                                }
+                            }
+
+                            if not_register {
+                                directive = self
+                                    .identifier
+                                    .get(&extracted_id)
+                                    .map(|(d, _)| d.clone())
+                                    .unwrap();
+                            }
+
                             if directive != "db" {
                                 let equivalent_directive =
                                     self.return_inverse_constant_directive_size(&directive);
-                                segment.push(format!(
-                                    "\tpush {} [{}]\n",
-                                    equivalent_directive, extracted_id
-                                ));
+
+                                if let Some(ident) = Some(extracted_id.clone()) {
+                                    if let Some(_) = self.identifier.get(&ident) {
+                                        self.memory_access = true;
+
+                                        let param: Option<&&str> = self
+                                            .function_parameter
+                                            .get(&ident)
+                                            .map(|(_, stack)| stack);
+
+                                        if let Some(parameter) = param {
+                                            segment.push(format!(
+                                                "\tpush {} [{}]\n",
+                                                equivalent_directive, parameter
+                                            ));
+                                        } else {
+                                            let local =
+                                                self.local_identifier.get(&ident).map(|id| id);
+                                            if let Some(id) = local {
+                                                segment.push(format!(
+                                                    "\tpush {} [{}]\n",
+                                                    equivalent_directive, id
+                                                ));
+                                            } else {
+                                                segment.push(format!(
+                                                    "\tpush {} [{}]\n",
+                                                    equivalent_directive, ident
+                                                ));
+                                            }
+                                        }
+                                    }
+                                }
                             } else {
-                                segment.push(format!("\tpush [{}]\n", extracted_id));
+                                if let Some(ident) = Some(extracted_id.clone()) {
+                                    if let Some(_) = self.identifier.get(&ident) {
+                                        self.memory_access = true;
+
+                                        let param: Option<&&str> = self
+                                            .function_parameter
+                                            .get(&ident)
+                                            .map(|(_, stack)| stack);
+
+                                        if let Some(parameter) = param {
+                                            segment.push(format!("\tpush [{}]\n", parameter));
+                                        } else {
+                                            let local =
+                                                self.local_identifier.get(&ident).map(|id| id);
+                                            if let Some(id) = local {
+                                                segment.push(format!("\tpush [{}]\n", id));
+                                            } else {
+                                                segment.push(format!("\tpush [{}]\n", ident));
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         } else {
-                            segment.push(format!("\tpush {}\n", id));
+                            if let Some(ident) = Some(id.clone()) {
+                                if let Some(_) = self.identifier.get(&ident) {
+                                    self.memory_access = true;
+
+                                    let param: Option<&&str> =
+                                        self.function_parameter.get(&ident).map(|(_, stack)| stack);
+
+                                    if let Some(parameter) = param {
+                                        segment.push(format!("\tpush {}\n", parameter));
+                                    } else {
+                                        let local = self.local_identifier.get(&ident).map(|id| id);
+                                        if let Some(ide) = local {
+                                            segment.push(format!("\tpush {}\n", ide));
+                                        } else {
+                                            segment.push(format!("\tpush {}\n", ident));
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -433,9 +546,9 @@ impl<'a> X8664Generator<'a> {
                 } else {
                     let local = self.local_identifier.get(&ident.symbol).map(|id| id);
                     if let Some(id) = local {
-                        segment.push(format!("\tmovzx rax, [{}]\n", id))
+                        segment.push(format!("\tmov rax, [{}]\n", id))
                     } else {
-                        segment.push(format!("\tmovzx rax, [{}]\n", ident.symbol))
+                        segment.push(format!("\tmov rax, [{}]\n", ident.symbol))
                     }
                 }
             }
@@ -448,6 +561,7 @@ impl<'a> X8664Generator<'a> {
                 self.segments.data.push(string);
                 self.current_string = Some(format!("__STR_{}", self.unitialized_strings_counter));
             }
+            Expr::CallExpr(call) => self.generate_call_expr(call, segment),
             _ => {
                 panic!("Unsupported expression type");
             }
@@ -480,7 +594,7 @@ impl<'a> X8664Generator<'a> {
     }
 
     fn generate_mov_identifier(&mut self, identifier: Option<String>, segment: &mut Vec<String>) {
-        if let Some(ident) = identifier {
+        if let Some(ident) = identifier.clone() {
             if let Some(_) = self.identifier.get(&ident) {
                 self.memory_access = true;
 
@@ -497,7 +611,11 @@ impl<'a> X8664Generator<'a> {
                         segment.push(format!("\tmov [{}], rax\n", ident))
                     }
                 }
+            } else {
+                segment.push(format!("\tmov [{}], rax\n", identifier.unwrap()))
             }
+        } else {
+            segment.push(format!("\tmov [{}], rax\n", identifier.unwrap()))
         }
     }
 
@@ -534,14 +652,17 @@ impl<'a> X8664Generator<'a> {
     ) {
         match expr.operator.as_str() {
             "*" => unsafe {
-                if expr.typ.as_ptr().as_ref().unwrap().to_owned().unwrap() == Datatype::Text {
+                println!("pinto: {:#?}", expr.typ);
+                // pois ele nao está sendo usado
+                //baiano, pula pra 405
+                if (expr.typ.as_ptr().as_mut()).unwrap().to_owned() == Some(Datatype::Text) {
                     self.generate_expr(*expr.left, identifier.clone(), segment);
 
                     let s: String = <Option<String> as Clone>::clone(&self.current_string).unwrap();
                     self.generate_expr(*expr.right, identifier.clone(), segment);
                     segment.push(format!("\tpush {}\n", s));
                     segment.push(format!("\tpush rax\n"));
-                    segment.push("\ncall __txt_repeater\n".to_string());
+                    segment.push("\ncall __txt_repeater\n\n".to_string());
 
                     self.generate_mov_identifier(identifier, segment);
                 } else {
@@ -601,7 +722,7 @@ impl<'a> X8664Generator<'a> {
 
         segment.push("\tpush rax\n".to_string());
         segment.push("\tpush rbx\n".to_string());
-        segment.push("\tcall __pow\n".to_string());
+        segment.push("\tcall __pow\n\n".to_string());
 
         self.generate_mov_identifier(identifier, segment);
     }
@@ -763,8 +884,7 @@ impl<'a> X8664Generator<'a> {
                 if let Expr::CallExpr(call) = declaration_value.clone() {
                     self.generate_call_expr(call, segment);
 
-                    let return_size = self.get_return_size(&directive);
-                    segment.push(format!("\tmov [{}], {}\n", identifier, return_size));
+                    self.generate_mov_identifier(Some(identifier.clone()), segment);
                     self.memory_access = true;
 
                     if !parent.is_empty() {
@@ -773,6 +893,8 @@ impl<'a> X8664Generator<'a> {
 
                         format!("\t{}_{} {} 0x0\n", parent, identifier, &directive)
                     } else {
+                        self.local_identifier
+                            .insert(identifier.clone(), format!("{}", identifier));
                         format!("\t{} {} 0x0\n", identifier, &directive)
                     }
                 } else {
