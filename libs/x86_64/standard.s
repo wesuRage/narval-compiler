@@ -8,6 +8,9 @@ segment readable writeable
 
 segment readable executable
 ;--------------------------------------------------
+; String Multiplier
+; args sequence: rsi (str: text), rcx (n: integer)
+; output: rax (text)
 __txt_repeater:
     push rbp
     mov rbp, rsp
@@ -46,6 +49,9 @@ __txt_repeater:
     pop rbp
     ret
 ;--------------------------------------------------
+; Pow function
+; args sequence: rax (base: integer), rbx (exp: integer)
+; output: rax (integer)
 __pow:
     push rbp
     mov rbp, rsp
@@ -77,6 +83,9 @@ clear:
     ret
 
 ;--------------------------------------------------
+; Nanosleep 
+; args sequence: rdi (time: decimal)
+; output: void
 nanosleep:
     push rbp
     mov rbp, rsp
@@ -91,76 +100,94 @@ nanosleep:
     ret
 
 ;--------------------------------------------------
+; Exit
+; args sequence: rdi (integer)
+; output: rax (integer)
 exit:
-    push rbp
-    mov rbp, rsp
-
     mov rax, SYS_exit
-    mov rdi, [rbp+16]
     syscall
 
-    mov rsp, rbp
-    pop rbp
     ret
 
 ;--------------------------------------------------
+; Read
+; args sequence: rdi (fd: integer), rsi (buffer: void)
+; output: rax (integer)
 read:
-    push rbp
-    mov rbp, rsp
+    push rbx
+    push rcx
 
-    push qword [rbp+24] 
+    mov rbx, rdi
+    mov rcx, rsi
+    mov rdi, rbx
     call len
-    mov rdx, rax
 
+    mov rdx, rax
     mov rdi, STD_IN
-    mov rsi, [rbp+16]
+    mov rsi, rcx
     mov rax, SYS_read
     syscall
 
-    mov rsp, rbp
-    pop rbp
+    pop rbx
+    pop rcx
+
     ret
 
 ;--------------------------------------------------
-write_raw:
-    push rbp
-    mov rbp, rsp
+; Read Raw
+; args sequence: rdi (fd: integer), rsi (buffer: void), rdx (size: integer)
+; output: rax (integer)
+read_raw:
+    push rbx
+    push rcx
 
-    mov rdi, [rbp+32]
-    mov rsi, [rbp+24]
-    mov rdx, [rbp+16]
+    mov rbx, rdi
+    mov rcx, rsi
+
+    mov rdi, STD_IN
+    mov rsi, rcx
+    mov rax, SYS_read
+    syscall
+
+    pop rbx
+    pop rcx
+
+    ret
+
+;--------------------------------------------------
+; Write Raw  
+; args sequence: rdi (fd: integer), rsi (buffer: text), rdx (size: integer)
+write_raw:
     mov rax, SYS_write
     syscall
 
-    mov rsp, rbp
-    pop rbp
     ret
 
 ;--------------------------------------------------
+; Open ; a exarcebely simple eye is seeing your mind. It finds penis, dick, pussy, assembly, school, alexandre, self, boobs, narval, checker, generator, assembly x86 64, python, mom, games and prevert thoughs, but doesnt judge. 
+; arg sequence: rdi (filename: text), rsi (flags: integer), rdx (mode: integer)
+; output: rax (integer)
 open:
-    push rbp
-    mov rbp, rsp
-
-    mov rdi, [rbp+32]
-    mov rsi, [rbp+24]
-    mov rdx, [rbp+16]
     mov rax, SYS_open
     syscall
 
-    mov rsp, rbp
-    pop rbp
     ret
 
 ;--------------------------------------------------
-write:
-    push rbp
-    mov rbp, rsp
+; Write
+; args sequence: rdi (buffer: text)
+; output: rax (integer)
 
-    push qword [rbp+16]
+write:
+    push rbx
+    push rsi
+    push rdx
+
+    mov rbx, rdi
     call len
 
     mov rdi, STD_OUT
-    mov rsi, [rbp+16]
+    mov rsi, rbx
     mov rdx, rax
     mov rax, SYS_write
     syscall
@@ -171,17 +198,22 @@ write:
     mov rdx, 1
     syscall
 
-    mov rsp, rbp
-    pop rbp
+    pop rbx
+    pop rsi
+    pop rdx
+    
+
     ret
 
 ;--------------------------------------------------
-len:
-    push rbp
-    mov rbp, rsp
-    push rdi
+; Length of string
+; args sequence: rdi (input: text)
+; output: rax (integer)
 
-    mov rdi, [rbp+16]  ; str_ptr
+len:
+    push rbx
+
+    mov rbx, rdi
     xor rax, rax
 .next_char:
     mov al, byte [rdi]
@@ -190,71 +222,84 @@ len:
     inc rdi
     jmp .next_char
 .done:
-    sub rdi, [rbp+16]  ; Calcula o comprimento
+    sub rdi, rbx  ; Calculate length
     mov rax, rdi
 
-    pop rdi
-    mov rsp, rbp
-    pop rbp
+    pop rbx
     ret
 
 ;--------------------------------------------------
+; Totxt
+; args sequence: rdi (input: integer)
+; output: rax (text)
 totxt:
-    push rbp
-    mov rbp, rsp
-    push rbx
+    push rbx                ; Save the value of the following registers: rbx, rcx, rdx, rdi, and r9
     push rcx
     push rdx
-    push rdi
+    push rsi
     push r9
 
-    sub rsp, 32
-    mov rdi, rsp
-    add rdi, 31
-    mov byte [rdi], 0
-    dec rdi
-    mov rax, [rbp+16]  ; num
-    mov r9b, 0
-    cmp rax, 0
-    jge .start
-    neg rax
-    mov r9b, '-'
-.start:
-    xor rcx, rcx
-.loop:
-    xor rdx, rdx
-    mov rbx, 10
-    div rbx
-    add dl, '0'
-    mov [rdi], dl
-    dec rdi
-    inc rcx
-    test rax, rax
-    jnz .loop
-    add rdi, 1
-    cmp r9b, 0
-    je .positive
-    dec rdi
-    mov [rdi], r9b
-.positive:
-    mov rax, rdi
-    add rsp, 32
+    sub rsp, 32             ; Allocate 32 bytes on the stack for temporary use
+    mov rsi, rsp            ; Set rsi to point to the top of the allocated space
+    add rsi, 31             ; Move rsi to the end of the allocated space
+    mov byte [rsi], 0       ; Initialize the last byte of the allocated space with 0 (null terminator)
+    dec rsi                 ; Move rsi one byte back to start writing the string
 
-    pop r9
-    pop rdi
+    mov rax, rdi            ; Move the integer pointer from rdi to rax
+    mov r9b, 0              ; Initialize r9b to 0 (to be used later for the sign)
+    cmp rax, 0              ; Compare the number with 0
+    jge .start              ; If the number is greater than or equal to 0, jump to the .start label
+    neg rax                 ; If the number is negative, negate the number
+    mov r9b, '-'            ; Set r9b to '-' to indicate a negative sign
+
+.start:
+    xor rcx, rcx            ; Clear the register rcx (digit counter)
+
+.loop:
+    xor rdx, rdx            ; Clear the register rdx (for division operation)
+    mov rbx, 10             ; Set rbx to 10 (decimal base)
+    div rbx                 ; Divide rax by rbx (10). Quotient goes into rax and remainder goes into rdx
+    add dl, '0'             ; Convert the remainder (digit) from number to ASCII character
+    mov [rsi], dl           ; Store the ASCII character in the buffer
+    dec rsi                 ; Move rsi one byte back
+    inc rcx                 ; Increment the digit counter
+    test rax, rax           ; Test if rax is 0 (check if all digits have been processed)
+    jnz .loop               ; If rax is not 0, repeat the loop
+
+    add rsi, 1              ; Adjust rsi to the start of the string (moved forward by the number of digits)
+    cmp r9b, 0              ; Compare r9b with 0 (check if the number was negative)
+    je .positive            ; If r9b is 0, jump to the .positive label
+    dec rsi                 ; Move rsi to the start of the string to place the sign
+    mov [rsi], r9b          ; Store the sign at the correct position
+
+.positive:
+    mov rax, rsi            ; Move the address of the start of the string to rax
+    add rsp, 32             ; Restore the stack pointer (remove the allocated space)
+
+    pop r9                  ; Restore the values of the following registers: r9, rsi, rdx, rcx, and rbx
+    pop rsi
     pop rdx
     pop rcx
     pop rbx
-    mov rsp, rbp
-    pop rbp
-    ret
+    ret                     ; Return from the function, with the result (string) in rax
 
 ;--------------------------------------------------
+; Decimal to Text
+; args sequence: rdi (input: decimal)
+; output: rax (text)
+dtotxt:
+    mov rdi, [rbp+16]
+    xor rcx, rcx        ; Reset sign flag
+    xor rax, rax        ; Store de result
+
+    ret
+
+
+;--------------------------------------------------
+; To Integer
+; args sequence: rdi (input: text)
+; output: rax (integer)
 toint:
-    push rbp
-    mov rbp, rsp
-
-
     mov rdi, [rbp+16]
     xor rcx, rcx           ; Reset signal flag
     xor rax, rax           ; Reset result
@@ -286,25 +331,30 @@ toint:
     neg rax
 
 .no_negative:
-    mov rsp, rbp
-    pop rbp
     ret
 
 ;--------------------------------------------------
+; Starts With
+; args sequence: rdi (text: text), rsi (pref: text)
+; output: rax (boolean)
 starts_with:
-    push rbp
-    mov rbp, rsp
+    push rbx
+    push rcx
+    push r10
+    push rdx
 
-    mov rdi, [rbp+24]  ; text
+    mov rbx, rdi ; text
+    mov rcx, rsi
+    mov rdi, rcx  
     call len
     mov rsi, rax
-    mov rdi, [rbp+16]  ; prefix
+    mov rdi, rbx ; prefix
     call len
     mov r10, rax
     xor rax, rax
     xor rbx, rbx
-    mov rdi, [rbp+24]  ; text
-    mov rdx, [rbp+16]  ; prefix
+    mov rdi, rcx  ; text
+    mov rdx, rbx  ; prefix
 .next_char:
     cmp rsi, 0
     jle .done
@@ -328,6 +378,9 @@ starts_with:
 .yes:
     mov rax, 1
 .end_totxt:
-    mov rsp, rbp
-    pop rbp
+    pop rbx
+    pop rcx
+    pop r10
+    pop rdx
+
     ret
