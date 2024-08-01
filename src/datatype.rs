@@ -7,7 +7,7 @@ pub enum Datatype {
     Text,
     Boolean,
     Void,
-    Function((Vec<(String, Datatype)>, (String, Box<Datatype>))),
+    Function((Vec<(String, Option<Datatype>)>, (String, Box<Datatype>))),
     Object(Box<Datatype>),
     Array(Box<Datatype>),
     Tuple(Box<Datatype>),
@@ -66,9 +66,9 @@ impl fmt::Display for Datatype {
                 let mut i = 1;
                 for (name, typ) in params {
                     if i == params.len() {
-                        write!(f, "{}: {}", name, typ)?;
+                        write!(f, "{}: {}", name, typ.as_ref().unwrap())?;
                     } else {
-                        write!(f, "{}: {}, ", name, typ)?;
+                        write!(f, "{}: {}, ", name, typ.as_ref().unwrap())?;
                     }
 
                     i = i + 1;
