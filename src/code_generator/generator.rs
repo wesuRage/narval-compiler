@@ -5,13 +5,13 @@ use crate::code_generator::x86_64::X8664Generator;
 use crate::colors::printc;
 
 pub struct Generator<'a> {
-    tree: Program,
+    tree: &'a Program,
     filename: &'a String,
     arch: String,
 }
 
 impl<'a> Generator<'a> {
-    pub fn new(tree: Program, filename: &'a String, arch: String) -> Generator<'a> {
+    pub fn new(tree: &'a Program, filename: &'a String, arch: String) -> Generator<'a> {
         Generator {
             tree,
             filename,
