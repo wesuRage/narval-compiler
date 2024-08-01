@@ -1,39 +1,79 @@
 format ELF64 executable
 entry main
 
-include "/root/rust/narval/libs/x86_64/standard.s"
+include "/var/lib/narval/libs/x86_64/standard.s"
 
 segment readable writeable
-	__array_strings_0 db "zero", 0x0
-	__array_strings_1 db "um", 0x0
-	__array_strings_2 db "dois", 0x0
-	__array_strings_3 db "tres", 0x0
-	; ponteiro que aponta para todos os elementos
-	strings dq __array_strings_0, __array_strings_1, __array_strings_2, __array_strings_3
-	; calculo do tamanho do array
-	__meta_strings.length = ($ - strings) / 8
-	; ponteiro para o tamanho do array
-	strings.length dq __meta_strings.length
+	slashe_targe dq 0
+	slashe_niggatron dq 0
+	__TEMP_RETURN_0 dq 0
+	resto_rest dq 0
+	__TEMP_RETURN_1 dq 0
+	num dq 0x0
+	string dq 0x0
 
 segment readable executable
 main:
+	push 9
+	call slashe
 
-.for_0:
-	xor r12, r12 ; zera o contador. Equivalente a i = 0
-.for_body_0:
-	cmp r12, [strings.length] ; compara o contador com o tamanho da string
-	; se o contador for maior ou igual ao tamanho da string, pula pro fim
-	jge .end_for_0 ; equivalente a i >= strings.length
+	mov [num], rax
+	push qword [num]
+	call totxt
 
-	mov rdi, [strings+r12*8] ; coloca string[i] como primeiro argumento de write
-	call write ; write(string[i])
+	mov [string], rax
+	push qword [string]
+	call write
 
-	inc r12 ; i++
+	push 0
+	call exit
 
-	jmp .for_0 ; recomeça o loop
-.end_for_0:
+slashe:
+	push rbp
+	mov rbp, rsp
 
-	mov rdi, 0 ; return 0
-	call exit ; exit
+	mov rdi, [rbp+16]
+	mov rax, 2
+	mov rbx, rax
+	mov rax, rdi
+	add rax, rbx
+	mov [slashe_targe], rax
+	mov rax, [slashe_targe]
+	mov rbx, rax
+	mov rax, 3
+	push rax
+	push rbx
+	call __pow
 
-	
+	mov [slashe_niggatron], rax
+	push qword [slashe_niggatron]
+	call resto
+
+	mov [__TEMP_RETURN_0], rax
+	mov rax, [__TEMP_RETURN_0]
+
+	mov rsp, rbp
+	pop rbp
+	ret
+
+resto:
+	push rbp
+	mov rbp, rsp
+
+	mov rdi, [rbp+16]
+	mov rax, rdi
+	mov rbx, rax
+	mov rax, 4
+	xchg rax, rbx
+	cqo
+	idiv rbx
+	mov rax, rdx
+	mov [resto_rest], rax
+	mov rax, [resto_rest]
+	mov [__TEMP_RETURN_1], rax
+	mov rax, [__TEMP_RETURN_1]
+
+	mov rsp, rbp
+	pop rbp
+	ret
+
