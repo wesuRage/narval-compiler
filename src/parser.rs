@@ -1,5 +1,5 @@
 use crate::ast::*;
-use crate::colors::{escape, printc};
+use crate::colors::printc;
 use crate::datatype::*;
 use crate::lexer::{Token, TokenType};
 use std::cell::RefCell;
@@ -166,15 +166,7 @@ impl Parser {
         // Formata a mensagem de erro com informações relevantes
         let formatted_message: String = format!(
             "%%b{}%%!:%%y{}%%!:%%y{}%%!:\n%%r{} %%y{}%%!\n\t{} | {}\n\t{}%%r{}%%!",
-            filename,
-            lineno,
-            column.0,
-            "ERROR:",
-            message,
-            lineno,
-            escape(line),
-            lineshift,
-            column_repr,
+            filename, lineno, column.0, "ERROR:", message, lineno, line, lineshift, column_repr,
         );
         printc(&formatted_message); // Imprime a mensagem formatada com cores
 
@@ -822,7 +814,6 @@ impl Parser {
                 // Parseia a expressão de valor
                 let value: Box<Expr>;
 
-                println!("{}", self.at().value);
                 match self.at().token_type {
                     TokenType::OBracket => {
                         value = Box::new(self.parse_array_expr());
@@ -837,8 +828,6 @@ impl Parser {
                 column_val.1 = self.at().column.1 - 1;
                 position_val.1 = self.at().position.1 - 1;
                 // Espera pelo ponto e vírgula ";"
-                println!("{}", self.at().value);
-
                 self.expect(TokenType::Semicolon, "\";\" Expected");
 
                 column.1 = self.at().column.1 - 1;
@@ -1703,6 +1692,18 @@ impl Parser {
         column.1 = self.at().column.1 - 1;
         position.1 = self.at().position.1 - 1;
 
+        // End of Label
+        body.push(Stmt {
+            kind: NodeType::_EOL,
+            expr: Some(Expr::_EOL(_EOL {
+                kind: NodeType::_EOL,
+            })),
+            return_stmt: None,
+            column,
+            position,
+            lineno,
+        });
+
         // Retorna uma estrutura Expr representando a declaração da função
         Expr::FunctionDeclaration(Box::new(FunctionDeclaration {
             kind: NodeType::FunctionDeclaration,
@@ -2105,37 +2106,25 @@ impl Parser {
                     lineno,
                 })
             }
-            _ => return self.parse_postfix_expr(), // Analise a expressão primária e depois verifique por pós-fixação
+            _ => {
+                let exp = self.parse_bitwise_expr();
+                if self.at().token_type == TokenType::Increment
+                    || self.at().token_type == TokenType::Decrement
+                {
+                    return self.parse_postfix_expr(exp);
+                }
+                return exp;
+            } // Analise a expressão primária e depois verifique por pós-fixação
         };
 
         expr
     }
 
     /// Método para analisar uma expressão pós-fixada (incremento/decremento após a expressão)
-    fn parse_postfix_expr(&mut self) -> Expr {
+    fn parse_postfix_expr(&mut self, mut expr: Expr) -> Expr {
         let mut column: (usize, usize) = self.at().column;
         let mut position: (usize, usize) = self.at().position;
         let lineno: usize = self.at().lineno;
-
-        match self.next().token_type {
-            TokenType::BitwiseAnd
-            | TokenType::BitwiseOr
-            | TokenType::BitwiseXor
-            | TokenType::ShiftLeft
-            | TokenType::ShiftRight
-            | TokenType::Plus
-            | TokenType::Power
-            | TokenType::Minus
-            | TokenType::Mod
-            | TokenType::Mul
-            | TokenType::Div
-            | TokenType::IntegerDiv => {
-                return self.parse_bitwise_expr();
-            }
-            _ => (),
-        }
-
-        let mut expr: Expr = self.parse_call_member_expr(None); // Analise acesso de array
 
         loop {
             match self.at().token_type {
@@ -2146,7 +2135,7 @@ impl Parser {
 
                     expr = Expr::PostIncrementExpr(PostIncrementExpr {
                         kind: NodeType::PostIncrementExpr,
-                        operand: Box::new(expr),
+                        operand: Box::new(expr.clone()),
                         column,
                         position,
                         lineno,
@@ -2159,7 +2148,7 @@ impl Parser {
 
                     expr = Expr::PostDecrementExpr(PostDecrementExpr {
                         kind: NodeType::PostDecrementExpr,
-                        operand: Box::new(expr),
+                        operand: Box::new(expr.clone()),
                         column,
                         position,
                         lineno,
@@ -2169,7 +2158,7 @@ impl Parser {
             }
         }
 
-        expr // Retorna a expressão final
+        expr.clone() // Retorna a expressão final
     }
 
     // Atualize o método parse_expr para chamar parse_unary_expr
@@ -2186,16 +2175,17 @@ impl Parser {
         }
 
         match self.next().token_type {
-            TokenType::Plus
+            TokenType::BitwiseAnd
+            | TokenType::BitwiseOr
+            | TokenType::ShiftLeft
+            | TokenType::ShiftRight
+            | TokenType::BitwiseXor
+            | TokenType::Plus
             | TokenType::Minus
             | TokenType::Mul
             | TokenType::Div
-            | TokenType::Mod
-            | TokenType::Power
             | TokenType::IntegerDiv
-            | TokenType::BitwiseAnd
-            | TokenType::BitwiseOr
-            | TokenType::BitwiseXor => self.parse_bitwise_expr(),
+            | TokenType::Mod => self.parse_bitwise_expr(),
             _ => self.parse_assignment_expr(),
         }
     }
@@ -2216,22 +2206,10 @@ impl Parser {
                 _ => *self.parse_ternary_expr(),
             };
 
-            while self.at().token_type == TokenType::BitwiseOr
-                || self.at().token_type == TokenType::BitwiseAnd
-                || self.at().token_type == TokenType::BitwiseXor
-                || self.at().token_type == TokenType::ShiftLeft
-                || self.at().token_type == TokenType::ShiftRight
-                || self.at().token_type == TokenType::Plus
-                || self.at().token_type == TokenType::Minus
-                || self.at().token_type == TokenType::Mul
-                || self.at().token_type == TokenType::Div
-                || self.at().token_type == TokenType::Mod
-                || self.at().token_type == TokenType::Power
-                || self.at().token_type == TokenType::IntegerDiv
-            {
-                break;
-            }
-
+            // só que o problema é que tambem ele é analisado mas nao é jogado pra lugar nenhum
+            // precisava que ele pegasse o expr anterior e somasse com o novo analisado
+            //
+            //hmmmmmm
             column.1 = self.at().column.1 - 1;
             position.1 = self.at().position.1 - 1;
 
@@ -2647,8 +2625,52 @@ impl Parser {
     }
     //como?
 
-    // Método para analisar uma expressão primária
     fn parse_primary_expr(&mut self) -> Expr {
+        if self.at().token_type == TokenType::OParen {
+            let column: (usize, usize) = self.at().column;
+            let position: (usize, usize) = self.at().position;
+            let lineno: usize = self.at().lineno;
+            // Se for um parêntese aberto, consome o token e analisa a expressão dentro dos parênteses
+            self.eat();
+            let expr: Expr = self.parse_expr(); // Analisa a expressão dentro dos parênteses
+            if self.at().token_type == TokenType::Comma {
+                self.eat();
+
+                let mut values: Vec<Expr> = Vec::new();
+                values.push(expr);
+                let mut did = false;
+                while self.at().token_type != TokenType::CParen {
+                    if !did {
+                        self.expect(TokenType::Comma, "Expected \",\" here.");
+                        did = true;
+                    }
+                    values.push(self.parse_expr());
+
+                    if self.at().token_type == TokenType::Comma {
+                        self.eat();
+                    }
+                }
+
+                self.expect(TokenType::CParen, "\")\" Expected."); // Espera um parêntese fechado
+
+                return Expr::TupleLiteral(TupleLiteral {
+                    kind: NodeType::TupleLiteral,
+                    value: values,
+                    typ: RefCell::new(None),
+                    column,
+                    position,
+                    lineno,
+                }); // Retorna a expressão analisada
+            }
+
+            self.expect(TokenType::CParen, "\")\" Expected."); // Espera um parêntese fechado
+            return expr; // Retorna a expressão analisada
+        } else {
+            self.parse_essential_expr()
+        }
+    }
+    // Método para analisar uma expressão primária
+    fn parse_essential_expr(&mut self) -> Expr {
         // Verifica o tipo de token atual
         match self.at().token_type {
             TokenType::Identifier => {
@@ -2673,7 +2695,7 @@ impl Parser {
                 return Expr::NumericLiteral(NumericLiteral {
                     kind: NodeType::NumericLiteral,
                     value: self.eat().value, // Consome o token e obtém o valor numérico
-                    typ: None,
+                    typ: Some(Datatype::Integer),
                     column,
                     position,
                     lineno,
@@ -2757,42 +2779,6 @@ impl Parser {
                     lineno,
                 });
             }
-
-            TokenType::OParen => {
-                let column: (usize, usize) = self.at().column;
-                let position: (usize, usize) = self.at().position;
-                let lineno: usize = self.at().lineno;
-                // Se for um parêntese aberto, consome o token e analisa a expressão dentro dos parênteses
-                self.eat();
-                let expr: Expr = self.parse_expr(); // Analisa a expressão dentro dos parênteses
-                if self.at().token_type == TokenType::Comma {
-                    self.eat();
-
-                    let mut value: Vec<Expr> = Vec::new();
-                    value.push(expr);
-                    while self.at().token_type != TokenType::CParen {
-                        value.push(self.parse_expr());
-
-                        if self.at().token_type == TokenType::Comma {
-                            self.eat();
-                        }
-                    }
-
-                    self.expect(TokenType::CParen, "\")\" Expected."); // Espera um parêntese fechado
-
-                    return Expr::TupleLiteral(TupleLiteral {
-                        kind: NodeType::TupleLiteral,
-                        value,
-                        typ: RefCell::new(None),
-                        column,
-                        position,
-                        lineno,
-                    }); // Retorna a expressão analisada
-                }
-
-                self.expect(TokenType::CParen, "\")\" Expected."); // Espera um parêntese fechado
-                return expr; // Retorna a expressão analisada
-            }
             _ => {
                 let column: (usize, usize) = self.at().column;
                 let position: (usize, usize) = self.at().position;
@@ -2800,7 +2786,7 @@ impl Parser {
                 // Se for qualquer outro tipo de token
                 self.error(&format!("Unexpected token: {:?}", self.at().token_type)); // Gera um erro indicando um token inesperado
 
-                // Retorna uma expressão nula como fallback
+                // Retorna uma expressão void como fallback
                 return Expr::VoidLiteral(VoidLiteral {
                     kind: NodeType::VoidLiteral,
                     value: "()",
