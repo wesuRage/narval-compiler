@@ -1,8 +1,15 @@
 label slashe(qword target: integer): qword integer {
-    qword targe: integer = 2 + (2 % target);
-    targe
+    qword targe: integer = 2 + target;
+    
+    qword niggatron: integer = targe ** 3;
+    resto(niggatron)
 }
 
-qword num: integer = slashe(7);
+label resto(qword numero: integer): integer{
+    qword rest: integer = numero % 4;
+    rest
+}
+
+qword num: integer = slashe(9);
 qword string: text = totxt(num);
 write(string);

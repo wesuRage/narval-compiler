@@ -1,52 +1,39 @@
 format ELF64 executable
 entry main
 
-include "/var/lib/narval/libs/x86_64/standard.s"
+include "/root/rust/narval/libs/x86_64/standard.s"
 
 segment readable writeable
-	slashe_targe dq 0
-	__TEMP_RETURN dq 0
-	num dq 0x0
-	string dq 0x0
+	__array_strings_0 db "zero", 0x0
+	__array_strings_1 db "um", 0x0
+	__array_strings_2 db "dois", 0x0
+	__array_strings_3 db "tres", 0x0
+	; ponteiro que aponta para todos os elementos
+	strings dq __array_strings_0, __array_strings_1, __array_strings_2, __array_strings_3
+	; calculo do tamanho do array
+	__meta_strings.length = ($ - strings) / 8
+	; ponteiro para o tamanho do array
+	strings.length dq __meta_strings.length
 
 segment readable executable
 main:
-	push 7
-	call slashe
 
-	mov [num], rax
-	push qword [num]
-	call totxt
+.for_0:
+	xor r12, r12 ; zera o contador. Equivalente a i = 0
+.for_body_0:
+	cmp r12, [strings.length] ; compara o contador com o tamanho da string
+	; se o contador for maior ou igual ao tamanho da string, pula pro fim
+	jge .end_for_0 ; equivalente a i >= strings.length
 
-	mov [string], rax
-	push qword [string]
-	call write
+	mov rdi, [strings+r12*8] ; coloca string[i] como primeiro argumento de write
+	call write ; write(string[i])
 
-	push 0
-	call exit
+	inc r12 ; i++
 
-slashe:
-	push rbp
-	mov rbp, rsp
+	jmp .for_0 ; recomeça o loop
+.end_for_0:
 
-	mov rdi, [rbp+16]
-	mov rax, 2
-	mov rbx, rax
-	mov rax, 2
-	mov rbx, rax
-	mov rax, rdi
-	xchg rax, rbx
-	cqo
-	idiv rbx
-	mov rax, rdx
-	mov [slashe_targe], rax
-	add rax, rbx
-	mov [slashe_targe], rax
-	mov rax, [slashe_targe]
-	mov [__TEMP_RETURN], rax
-	mov rax, [__TEMP_RETURN]
+	mov rdi, 0 ; return 0
+	call exit ; exit
 
-	mov rsp, rbp
-	pop rbp
-	ret
-
+	
