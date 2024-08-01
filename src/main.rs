@@ -5,6 +5,7 @@ mod code_generator {
 }
 
 mod ast;
+mod builtin;
 mod checker;
 mod colors;
 mod compiler;
@@ -12,13 +13,13 @@ mod datatype;
 mod lexer;
 mod parser;
 
+use crate::builtin::utilities;
 use ast::Program;
 use checker::{Checker, Namespace};
-use clap::{Args, Parser as ArgParser, Subcommand};
+use clap::Parser as ArgParser;
 use code_generator::generator::Generator;
 use colors::printc;
 use compiler::Compiler;
-use datatype::Datatype;
 use lexer::{Lexer, Token};
 use parser::Parser;
 use std::{fs, process::exit};
@@ -69,7 +70,7 @@ fn expand_and_canonicalize_path(filename: &str) -> String {
 fn main() {
     let cli: Cli = Cli::parse();
     let justcheck = cli.just_check;
-
+    //
     let filename: &String = &cli.run;
 
     // let filename: &String = &"./tests/main.nv".to_string();
@@ -87,22 +88,9 @@ fn main() {
     let ast: Program = parser.produce_ast(tokens.clone(), &source_code);
 
     let namespace: &mut Vec<Namespace> = &mut vec![Namespace::new()];
-    let mut checker: Checker = Checker::new(ast.clone(), namespace, &source_code, &full_path);
+    let mut checker: Checker = Checker::new(&ast, namespace, &source_code, &full_path);
 
-    checker.inject_value(
-        "write".to_string(),
-        Datatype::Function((
-            vec![("argument".to_string(), Datatype::Text)],
-            ("word".to_string(), Box::new(Datatype::Void)),
-        )),
-    );
-    checker.inject_value(
-        "totxt".to_string(),
-        Datatype::Function((
-            vec![("value".to_string(), Datatype::Integer)],
-            ("word".to_string(), Box::new(Datatype::Text)),
-        )),
-    );
+    utilities(&mut checker);
 
     loop {
         for stmt in checker.current_body.2.clone() {
@@ -113,14 +101,11 @@ fn main() {
             break;
         }
     }
-
-    // println!("{:#?}", ast.clone());
-
     if justcheck == 1 {
         return;
     }
 
-    let mut generator: Generator = Generator::new(ast.clone(), &full_path, cli.arch);
+    let mut generator: Generator = Generator::new(&ast, &full_path, cli.arch);
     generator.generate();
 
     let mut compiler: Compiler = Compiler::new(&full_path, cli.output);
