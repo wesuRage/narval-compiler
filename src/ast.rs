@@ -50,7 +50,7 @@ pub enum NodeType {
     UnaryMinusExpr,
     UnaryBitwiseNotExpr,
     RangeExpr,
-    ENDFUNC,
+    _EOL,
 }
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -95,7 +95,7 @@ pub enum Expr {
     PostDecrementExpr(PostDecrementExpr),
     RangeExpr(Box<RangeExpr>),
     UnaryBitwiseNotExpr(UnaryBitwiseNotExpr),
-    _ENDFUNCTION(Vec<(String, Datatype)>, Datatype),
+    _EOL(_EOL),
 }
 
 // Implementação de métodos para a enumeração Expr
@@ -142,7 +142,7 @@ impl Expr {
             Expr::UnitVarDeclaration(_) => NodeType::UnitVarDeclaration, // Se for uma declaração de variável dentro de uma unit
             Expr::VarDeclaration(_) => NodeType::VarDeclaration, // Se for uma declaração de variável
             Expr::WhileStmt(_) => NodeType::WhileStmt,           // Se for um while statement
-            Expr::_ENDFUNCTION(..) => NodeType::ENDFUNC,
+            Expr::_EOL(_) => NodeType::_EOL,
         }
     }
 
@@ -186,14 +186,20 @@ impl Expr {
             Expr::UnitVarDeclaration(e) => (e.position, e.column, e.lineno), // Se for uma declaração de variável dentro de uma unit
             Expr::VarDeclaration(e) => (e.position, e.column, e.lineno), // Se for uma declaração de variável
             Expr::WhileStmt(e) => (e.position, e.column, e.lineno),
-            Expr::_ENDFUNCTION(..) => ((0, 0), (0, 0), 0),
+            Expr::_EOL(_) => ((0, 0), (0, 0), 0),
         }
     }
 }
+
 #[derive(Debug, Clone)]
 pub struct Program {
     pub kind: NodeType,
     pub body: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone)]
+pub struct _EOL {
+    pub kind: NodeType,
 }
 
 #[derive(Debug, Clone)]
