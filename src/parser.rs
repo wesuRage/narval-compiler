@@ -219,7 +219,7 @@ impl Parser {
             // Se o token atual for private ou public, analisa um statement unit
             TokenType::Private | TokenType::Public => self.parse_unit_statement_declaration(),
             // Analisa declaração de variaveis simples, tipadas ou não
-            TokenType::Val => self.parse_val_var_declaration(),
+            TokenType::Var => self.parse_var_variable_declaration(),
             // Analisa declaração de funções
             TokenType::Label => {
                 let mut column: (usize, usize) = self.at().column;
@@ -722,7 +722,7 @@ impl Parser {
         }
     }
 
-    fn parse_val_var_declaration(&mut self) -> Stmt {
+    fn parse_var_variable_declaration(&mut self) -> Stmt {
         let mut column: (usize, usize) = self.at().column;
         let mut position: (usize, usize) = self.at().position;
         let mut column_val: (usize, usize) = self.at().column;
@@ -769,7 +769,7 @@ impl Parser {
             };
         }
 
-        // faz o parsing de "val identifier: type;" e "val identifier: type = value"
+        // faz o parsing de "var identifier: type;" e "var identifier: type = value"
         if self.at().token_type == TokenType::Colon {
             self.eat();
 

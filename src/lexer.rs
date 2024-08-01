@@ -95,7 +95,7 @@ pub enum TokenType {
     Text,
     True,
     Unit,
-    Val,
+    Var,
     Void,
     When,
     While,
@@ -206,7 +206,7 @@ impl TokenDefinitions {
         keywords.insert("text", TokenType::Text);
         keywords.insert("true", TokenType::True);
         keywords.insert("unit", TokenType::Unit);
-        keywords.insert("val", TokenType::Val);
+        keywords.insert("var", TokenType::Var);
         keywords.insert("void", TokenType::Void);
         keywords.insert("when", TokenType::When);
         keywords.insert("while", TokenType::While);
