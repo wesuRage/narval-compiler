@@ -1,6 +1,6 @@
 use crate::ast;
 use crate::ast::*;
-use crate::colors::{escape, printc};
+use crate::colors::printc;
 use crate::datatype::Datatype;
 use crate::datatype::Datatype::*;
 use std::cell::RefCell;
@@ -71,9 +71,10 @@ impl Namespace {
 }
 
 pub struct Checker<'a> {
-    pub program: Program,
+    pub program: &'a Program,
     pub filename: &'a String,
     pub func_id: i32,
+    pub funcnames: Vec<String>,
     pub bodies: Vec<(i32, Dt, Vec<Stmt>)>,
     pub current_body: (i32, Dt, Vec<Stmt>),
     pub namespaces: Vec<Namespace>,
@@ -88,7 +89,7 @@ type Dt = Option<Datatype>;
 
 impl<'a> Checker<'a> {
     pub fn new(
-        tree: Program,
+        mut tree: &'a Program,
         namespacearr: &'a mut Vec<Namespace>,
         source_code: &str,
         filename: &'a String,
@@ -101,6 +102,7 @@ impl<'a> Checker<'a> {
             program: tree,
             func_id: 0,
             filename,
+            funcnames: vec!["(global scope)".to_string()],
             bodies: bodies.clone(),
             current_body: bodies[0].clone(),
             namespaces: namespacearr.to_vec(),
@@ -163,7 +165,7 @@ impl<'a> Checker<'a> {
             Some(Expr::BinaryExpr(ref mut expr)) => self.check_binop(expr),
             Some(Expr::ArrayExpr(expr)) => self.check_array(expr),
             Some(Expr::FunctionDeclaration(decl)) => self.check_label(decl),
-            Some(Expr::_ENDFUNCTION(..)) => self.finalize_check_label(),
+            Some(Expr::_EOL(_)) => self.finalize_label(),
             Some(Expr::IfStmt(stmt)) => self.check_if(stmt),
             Some(Expr::CallExpr(expr)) => self.check_call(expr),
             Some(Expr::Enum(enm)) => self.check_enum(enm),
@@ -175,6 +177,8 @@ impl<'a> Checker<'a> {
     fn error_wdata(&mut self, data: ((usize, usize), (usize, usize), usize), message: &str) {
         let filename: &String = &self.filename;
         let column: (usize, usize) = data.1;
+        let index = self.funcnames.len() - 1;
+        let name: &String = &self.funcnames[index];
         let lineno: usize = data.2;
         let lineshift = " ".repeat(3 + (lineno.to_string().len()));
         let line: &String = &self.lines.as_ref().unwrap()[lineno - 1];
@@ -184,16 +188,8 @@ impl<'a> Checker<'a> {
             "^".repeat(data.1 .1 - data.1 .0)
         );
         let formatted_message: String = format!(
-            "%%b{}%%!:%%y{}%%!:%%y{}%%!:\n%%r{} %%y{}%%!\n\t{} | {}\n\t{}%%r{}%%!",
-            filename,
-            lineno,
-            column.0,
-            "ERROR:",
-            message,
-            lineno,
-            escape(line),
-            lineshift,
-            column_repr,
+            "%%b{}%%!:%%y{}%%!:%%y{}%%!:\n%%rERROR %%gin {}%%!: %%y{}%%!\n\t{} | {}\n\t{}%%r{}%%!",
+            filename, lineno, column.0, name, message, lineno, line, lineshift, column_repr,
         );
         printc(&formatted_message);
     }
@@ -267,7 +263,6 @@ impl<'a> Checker<'a> {
         return if types.len() == 1 {
             // pra mim tu escreveu igual o flash e apagou
             if Some(types[0].clone()).is_none() {
-                println!("é none");
                 return Some(Void);
             }
             let r: Option<Datatype> = Some(Object(Box::new(types[0].clone())));
@@ -301,7 +296,6 @@ impl<'a> Checker<'a> {
             self.newvar(decl.identifier.unwrap(), dt, false);
             None
         } else {
-            println!("{:?}", dt.clone());
             None
         }
     }
@@ -395,7 +389,9 @@ impl<'a> Checker<'a> {
                                 "Can't repeat a string using non-integer values.",
                             );
                         }
-                        return Some(Text);
+                        let st = Some(Text);
+                        *expr.typ.borrow_mut() = st.clone();
+                        return st;
                     } else {
                         let isntnum_l = !(l == Integer || l == Decimal);
                         let isntnum_r = !(r == Integer || r == Decimal);
@@ -442,7 +438,11 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
-                "==" | "!=" => Some(Boolean),
+                "==" | "!=" => {
+                    let t = Some(Boolean);
+                    *expr.typ.borrow_mut() = t.clone();
+                    return t;
+                }
                 ">" | "<" | ">=" | "<=" => {
                     let isntnum_l = !(l == Integer || l == Decimal);
                     let isntnum_r = !(r == Integer || r == Decimal);
@@ -545,35 +545,30 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn pushbody(
-        &mut self,
-        body: &mut Vec<Stmt>,
-        params: &Vec<(String, Datatype)>,
-        rettype: Datatype,
-    ) {
+    fn pushbody(&mut self, body: &mut Vec<Stmt>, name: String, rettype: Datatype) {
         self.func_id += 1;
-        body.push(self.expr2stmt(Expr::_ENDFUNCTION(params.to_vec(), rettype.clone())));
-        //PERA
+        //
         self.bodies
             .push((self.func_id, Some(rettype), body.to_vec()));
+        self.funcnames.push(name);
         self.current_body = self.bodies[self.bodies.len() - 1].clone();
     }
 
     fn popbody(&mut self) {
         self.func_id -= 1;
         self.bodies.pop();
+        self.funcnames.pop();
         self.current_body = self.bodies[self.bodies.len() - 1].clone();
     }
 
     pub fn pushns(&mut self) {
-        let new_ns = Namespace::new_inheriting(Some(Rc::new(RefCell::new(
+        let new_ns: Namespace = Namespace::new_inheriting(Some(Rc::new(RefCell::new(
             self.namespaces[self.current_namespace_index].clone(),
         ))));
         self.namespaces.push(new_ns);
         self.current_namespace_index = self.namespaces.len() - 1;
     }
 
-    //hm, o q ce fez meu caro senhor
     pub fn popns(&mut self) {
         if self.namespaces.len() > 1 {
             self.namespaces.pop();
@@ -591,10 +586,10 @@ impl<'a> Checker<'a> {
 
     fn check_label(&mut self, declt: Box<FunctionDeclaration>) -> Dt {
         let decl: FunctionDeclaration = *declt;
-        let mut params: Vec<(String, Datatype)> = Vec::new();
+        let mut params: Vec<(String, Option<Datatype>)> = Vec::new();
         let mut body: Vec<Stmt> = decl.body;
         for (_size, name, t) in decl.parameters {
-            params.push((name, t));
+            params.push((name, Some(t)));
         }
         let ft: Option<Datatype> = Some(Function((
             params.clone(),
@@ -603,20 +598,25 @@ impl<'a> Checker<'a> {
 
         self.newvar(decl.name.clone(), ft.clone(), true);
 
-        self.pushbody(&mut body, &params, decl.return_type.clone());
+        self.pushbody(&mut body, decl.name.clone(), decl.return_type.clone());
         self.pushns();
 
         for (name, t) in params.clone() {
-            self.namespace.newvar(name, t, false).ok();
+            self.namespace.newvar(name, t.unwrap(), false).ok();
         }
 
         return ft.clone();
     }
 
-    fn finalize_check_label(&mut self) -> Dt {
-        self.popbody();
+    fn finalize_label(&mut self) -> Dt {
+        let lastid = self.func_id;
         self.popns();
-        Some(Void)
+        self.popbody();
+        if lastid == self.func_id {
+            panic!("For some reason, the scope wasn't popped");
+        }
+
+        None
     }
 
     fn check_if(&mut self, stat: Box<IfStmt>) -> Dt {
@@ -673,16 +673,14 @@ impl<'a> Checker<'a> {
                 }
 
                 for (i, arg) in call.args.into_iter().enumerate() {
-                    let at = self.check(self.expr2stmt(*arg.clone())).unwrap_or(Void);
+                    let at: Datatype = self.check(self.expr2stmt(*arg.clone())).unwrap_or(Void);
 
-                    if !(at == params[i].1
-                        || at.cast(&params[i].1).expect("Unable to parse void types.")
-                            == params[i].1)
-                    {
+                    let p: &Datatype = params[i].1.as_ref().unwrap();
+
+                    if !(at == *p || at.cast(&p).expect("Unable to parse void types.") == *p) {
                         self.error(
                             *arg.clone(),
-                            format!("Expected type {} here, but found {}.", params[i].1, at)
-                                .as_str(),
+                            format!("Expected type {} here, but found {}.", p, at).as_str(),
                         )
                     }
                 }
