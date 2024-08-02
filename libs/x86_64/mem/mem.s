@@ -18,33 +18,23 @@ segment readable writeable
   
 segment readable executable
 ;--------------------------------------------------
+; Memory Unmap
+; args sequence: rdi (addr: void), rsi (length: integer)
+; output: rax (integer)
 munmap:
-    push rbp
-    mov rbp, rsp
-
-    mov rdi, [rbp+24]  ; addr: endereço mapeado
-    mov rsi, [rbp+16]  ; length: 4096 bytes
     mov rax, SYS_munmap
     syscall
 
-    mov rsp, rbp
-    pop rbp
     ret 
 
 ;--------------------------------------------------
+; Memory Map
+; args sequence: rdi (addr: void), rsi(length: integer), rdx (prot: integer), 
+;                r10 (flags: integer), r8 (fd: integer), r9 (offset: integer)
+;
+; output: rax (integer)
 mmap:
-    push rbp
-    mov rbp, rsp
-
-    mov rdi, [rbp+56]  ; addr
-    mov rsi, [rbp+48]  ; length
-    mov rdx, [rbp+40]  ; prot
-    mov r10, [rbp+32]  ; flags
-    mov r8,  [rbp+24]  ; fd
-    mov r9,  [rbp+16]  ; offset
     mov rax, SYS_mmap
     syscall
 
-    mov rsp, rbp
-    pop rbp
     ret

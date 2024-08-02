@@ -1,9 +1,9 @@
 include "../linux.s"
 
 segment readable writeable
-    KB               equ 1024
-    MAX_CONN         equ 1*KB
-    REQUEST_CAPACITY equ 128*KB
+    __KB             equ 1024
+    MAX_CONN         equ 1*__KB
+    REQUEST_CAPACITY equ 128*__KB
 
     AF_INET          equ 2
     SOCK_STREAM      equ 1
@@ -15,90 +15,60 @@ segment readable writeable
     
 segment readable executable
 ;--------------------------------------------------
+; Socket
+; args sequence: rdi (domain: integer), rsi (type: integer), rdx (protocol: integer)
+; output: rax (integer)
 socket:
-    push rbp
-    mov rbp, rsp
-
     mov rax, SYS_socket
-    mov rdi, [rbp+32]  ; domain
-    mov rsi, [rbp+24]  ; type
-    mov rdx, [rbp+16]  ; protocol
     syscall
 
-    mov rsp, rbp
-    pop rbp
     ret
 
 ;--------------------------------------------------
+; Bind
+; args sequence: rdi (sockfd: integer), rsi (addr: Object<integer>), rdx (addrlen: integer)
+; output: rax (integer)
 bind:
-    push rbp
-    mov rbp, rsp
-
     mov rax, SYS_bind
-    mov rdi, [rbp+32]  ; sockfd
-    mov rsi, [rbp+24]  ; addr
-    mov rdx, [rbp+16]  ; addrlen
     syscall
 
-    mov rsp, rbp
-    pop rbp
     ret
 
 ;--------------------------------------------------
+; Listen
+; args sequence: rdi (sockfd: integer), rsi (backlog: integer)
 listen:
-    push rbp
-    mov rbp, rsp
-
     mov rax, SYS_listen
-    mov rdi, [rbp+24]  ; sockfd
-    mov rsi, [rbp+16]  ; backlog
     syscall
 
-    mov rsp, rbp
-    pop rbp
     ret
 
 ;--------------------------------------------------
+; Close 
+; args sequence: rdi (fd: integer)
+; output: rax (integer)
 close:
-    push rbp
-    mov rbp, rsp
-
     mov rax, SYS_close
-    mov rdi, [rbp+16]  ; fd
     syscall
 
-    mov rsp, rbp
-    pop rbp
     ret
 
 ;--------------------------------------------------
+; Accept
+; args sequence: rdi (sockfd: integer), rsi (addr: void), rdx (addrlen: integer)
+; output: rax (integer)
 accept:
-    push rbp
-    mov rbp, rsp
-
     mov rax, SYS_accept
-    mov rdi, [rbp+32]  ; sockfd
-    mov rsi, [rbp+24]  ; addr
-    mov rdx, [rbp+16]  ; addrlen
     syscall
 
-    mov rsp, rbp
-    pop rbp
     ret
     
 ;--------------------------------------------------
+; Set the Socket Options
+; args sequence: rdi(sockfd: integer), rsi (level: integer), rdx (optname: integer), 
+;                r10(optval: void), r8 (optlen: integer)
 setsockopt:
-    push rbp
-    mov rbp, rsp
-
     mov rax, SYS_setsockopt
-    mov rdi, [rbp+48]  ; sockfd
-    mov rsi, [rbp+40]  ; level
-    mov rdx, [rbp+32]  ; optname
-    mov r10, [rbp+24]  ; optval
-    mov r8,  [rbp+16]  ; optlen
     syscall
 
-    mov rsp, rbp
-    pop rbp
     ret

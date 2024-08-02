@@ -9,94 +9,72 @@ segment readable writeable
 segment readable executable
 ;--------------------------------------------------
 ; String Multiplier
-; args sequence: rsi (str: text), rcx (n: integer)
+; args sequence: rdi (str: text), rsi (n: integer)
 ; output: rax (text)
 __txt_repeater:
-    push rbp
-    mov rbp, rsp
 
+    mov rcx, rdi              ; number of repetitions
     mov rdi, __TEMP_STRING_BUFFER
-    mov rsi, [rbp+24] ; source string
-    mov rcx, [rbp+16] ; number of repetitions
 
-    xor rdx, rdx      ; repetition index
-    mov r8, rdi       ; r8 points to the start of the destination buffer
+    xor rdx, rdx              ; repetition index
+    mov r8, rdi               ; r8 points to the start of the destination buffer
 
 .repeat:
     cmp rdx, rcx
-    jge .end_repeat
+    jge .end_repeat 
 
-    ; Copiar a string fonte para o buffer de destino
-    mov r9, rsi       ; r9 aponta para o início da string fonte
+    ; Copies source string to the destination buffer
+    mov r9, rsi              ; r9 points to the beginning of the source string
     .copy_string:
-        mov al, byte [r9]
-        cmp al, 0
-        je .copy_done
-        mov byte [r8], al
-        inc r8
-        inc r9
-        jmp .copy_string
+        mov al, byte [r9]    ; Moves to al the current byte of the source string   
+        cmp al, 0            ; Compares this byte with 0
+        je .copy_done        ; If equals, it's done
+        mov byte [r8], al    ; Otherwise, moves the current byte to the desination buffer
+        inc r8               ; Increments the destination buffer
+        inc r9               ; Increments the source string
+        jmp .copy_string     ; Restarts the loop
     .copy_done:
-    inc rdx
-    jmp .repeat
+    inc rdx                  ; Increments the repetition index
+    jmp .repeat              ; Restarts the loop
 
 .end_repeat:
-    ; Adicionar o terminador nulo no final da string
-    mov byte [r8], 0
-    mov rax, rdi
+    mov byte [r8], 0         ; Adds a null terminator to the string
+    mov rax, rdi             ; Moves the result to the return of the funtion
 
-    mov rsp, rbp
-    pop rbp
     ret
 ;--------------------------------------------------
 ; Pow function
-; args sequence: rax (base: integer), rbx (exp: integer)
+; args sequence: rdi (base: integer), rsi (exp: integer)
 ; output: rax (integer)
 __pow:
-    push rbp
-    mov rbp, rsp
 
-    mov rax, [rsp+24]
-    mov rbx, [rsp+16]
-    mov rcx, rax
+    mov rbx, rdi        ; Moves the first argument to rbx
+    mov rax, rsi        ; Moves the second argument to rax
+    mov rcx, rax        ; Moves the second argument to rcx to be the exponent
     mov rax, 1          ; initializes the result
-    test rcx, rcx
-    jz .pow_end
-.pow_loop:
-    imul rax, rbx
-    loop .pow_loop
+    test rcx, rcx       ; Tests rcx
+    jz .pow_end         ; If zero, the funciton ends
+.pow_loop:              ; Otherwise, it starts a multiplication loop
+    imul rax, rbx       ; Multiplies rax by rbx
+    loop .pow_loop      ; Restart the loop rcx times
 .pow_end:
-    mov rsp, rbp
-    pop rbp
     ret
     
 ;--------------------------------------------------
 clear:
-    push rbp
-    mov rbp, rsp
-
-    push __STANDARD_CLEAR
+    mov rdi, __STANDARD_CLEAR
     call write
-
-    mov rsp, rbp
-    pop rbp
     ret
-
 ;--------------------------------------------------
 ; Nanosleep 
-; args sequence: rdi (time: decimal)
-; output: void
+; args sequence: rdi (time: tuple(seconds: integer, nanoseconds: integer))
+; output: rax (integer)
 nanosleep:
-    push rbp
-    mov rbp, rsp
 
     mov rax, SYS_nanosleep
-    mov rdi, [rsp+16]
     xor rsi, rsi
     syscall
 
-    mov rsp, rbp
-    pop rbp
     ret
 
 ;--------------------------------------------------
@@ -114,6 +92,7 @@ exit:
 ; args sequence: rdi (fd: integer), rsi (buffer: void)
 ; output: rax (integer)
 read:
+    ; Saves rbx and rcx
     push rbx
     push rcx
 
@@ -128,6 +107,7 @@ read:
     mov rax, SYS_read
     syscall
 
+    ; Restores rbx and rcx
     pop rbx
     pop rcx
 
@@ -138,19 +118,8 @@ read:
 ; args sequence: rdi (fd: integer), rsi (buffer: void), rdx (size: integer)
 ; output: rax (integer)
 read_raw:
-    push rbx
-    push rcx
-
-    mov rbx, rdi
-    mov rcx, rsi
-
-    mov rdi, STD_IN
-    mov rsi, rcx
     mov rax, SYS_read
     syscall
-
-    pop rbx
-    pop rcx
 
     ret
 
@@ -164,7 +133,7 @@ write_raw:
     ret
 
 ;--------------------------------------------------
-; Open ; a exarcebely simple eye is seeing your mind. It finds penis, dick, pussy, assembly, school, alexandre, self, boobs, narval, checker, generator, assembly x86 64, python, mom, games and prevert thoughs, but doesnt judge. 
+; Open
 ; arg sequence: rdi (filename: text), rsi (flags: integer), rdx (mode: integer)
 ; output: rax (integer)
 open:
@@ -179,25 +148,27 @@ open:
 ; output: rax (integer)
 
 write:
+    ; save rbx, rsi and rdx
     push rbx
     push rsi
     push rdx
 
-    mov rbx, rdi
-    call len
-
-    mov rdi, STD_OUT
-    mov rsi, rbx
-    mov rdx, rax
-    mov rax, SYS_write
+    mov rbx, rdi                 ; Saves the first argument in rbx and keeps it to the len function
+    call len                     ; Uses the value of rdi as first argument to calculate the length
+    
+    mov rdi, STD_OUT             ; Moves the file descriptor to rdi
+    mov rsi, rbx                 ; Uses the saved value of the string in rsi
+    mov rdx, rax                 ; Uses the return value of the function len as the size
+    mov rax, SYS_write           ; Syscall of write
     syscall
 
-    mov rax, SYS_write
-    mov rdi, STD_OUT
-    mov rsi, __STANDARD_NEWLINE
-    mov rdx, 1
+    mov rax, SYS_write           ; Syscall of write
+    mov rdi, STD_OUT             ; Moves the file descriptor to rdi
+    mov rsi, __STANDARD_NEWLINE  ; Moves a pointer of a newline character to rsi
+    mov rdx, 1                   ; Sets the length as 1
     syscall
 
+    ; Restores the saved registers
     pop rbx
     pop rsi
     pop rdx
@@ -211,21 +182,21 @@ write:
 ; output: rax (integer)
 
 len:
-    push rbx
+    push rbx            ; Saves rbx
 
-    mov rbx, rdi
-    xor rax, rax
+    mov rbx, rdi        ; Moves the first argument to rbx
+    xor rax, rax        ; Makes rax be equals to zero
 .next_char:
-    mov al, byte [rdi]
-    cmp al, 0
-    je .done
-    inc rdi
-    jmp .next_char
+    mov al, byte [rdi]  ; Moves the current byte of rdi to al
+    cmp al, 0           ; Compares this byte with zero
+    je .done            ; If it's zero, it's done
+    inc rdi             ; Increments in rdi
+    jmp .next_char      ; Restars the loop
 .done:
-    sub rdi, rbx  ; Calculate length
-    mov rax, rdi
+    sub rdi, rbx        ; Calculate length by taking rdi and subtracting the initial value
+    mov rax, rdi        ; Moves the length to te return of the function
 
-    pop rbx
+    pop rbx             ; Restores rbx
     ret
 
 ;--------------------------------------------------
@@ -248,14 +219,14 @@ totxt:
     mov rax, rdi            ; Move the integer pointer from rdi to rax
     mov r9b, 0              ; Initialize r9b to 0 (to be used later for the sign)
     cmp rax, 0              ; Compare the number with 0
-    jge .start              ; If the number is greater than or equal to 0, jump to the .start label
+    jge .totxt_start              ; If the number is greater than or equal to 0, jump to the .start label
     neg rax                 ; If the number is negative, negate the number
     mov r9b, '-'            ; Set r9b to '-' to indicate a negative sign
 
-.start:
+.totxt_start:
     xor rcx, rcx            ; Clear the register rcx (digit counter)
 
-.loop:
+.totxt_loop:
     xor rdx, rdx            ; Clear the register rdx (for division operation)
     mov rbx, 10             ; Set rbx to 10 (decimal base)
     div rbx                 ; Divide rax by rbx (10). Quotient goes into rax and remainder goes into rdx
@@ -264,15 +235,15 @@ totxt:
     dec rsi                 ; Move rsi one byte back
     inc rcx                 ; Increment the digit counter
     test rax, rax           ; Test if rax is 0 (check if all digits have been processed)
-    jnz .loop               ; If rax is not 0, repeat the loop
+    jnz .totxt_loop         ; If rax is not 0, repeat the loop
 
     add rsi, 1              ; Adjust rsi to the start of the string (moved forward by the number of digits)
     cmp r9b, 0              ; Compare r9b with 0 (check if the number was negative)
-    je .positive            ; If r9b is 0, jump to the .positive label
+    je .totxt_positive      ; If r9b is 0, jump to the .positive label
     dec rsi                 ; Move rsi to the start of the string to place the sign
     mov [rsi], r9b          ; Store the sign at the correct position
 
-.positive:
+.totxt_positive:
     mov rax, rsi            ; Move the address of the start of the string to rax
     add rsp, 32             ; Restore the stack pointer (remove the allocated space)
 
@@ -300,7 +271,6 @@ dtotxt:
 ; args sequence: rdi (input: text)
 ; output: rax (integer)
 toint:
-    mov rdi, [rbp+16]
     xor rcx, rcx           ; Reset signal flag
     xor rax, rax           ; Reset result
 
@@ -315,14 +285,14 @@ toint:
 .start_conversion:
     xor rax, rax           ; Clear rax for the conversion
 .loop:
-    mov bl, byte [rdi]
-    cmp bl, 0
-    je .end_to_int
-    sub bl, '0'
-    imul rax, rax, 10
-    add rax, rbx
-    inc rdi
-    jmp .loop
+    mov bl, byte [rdi]     ; Moves the current byte of rdi to bl
+    cmp bl, 0              ; Compares the byte with 0
+    je .end_to_int         ; If equals, jumps to the end of the conversion
+    sub bl, '0'            ; Subtracts '0' from this byte
+    imul rax, rax, 10      ; Multiplies rax by 10 and stores the result in rax
+    add rax, rbx           ; Adds rbx to rax
+    inc rdi                ; Increments the string
+    jmp .loop              ; Restarts the loop
 
 .end_to_int:
     ; Apply negative sign if necessary
@@ -338,46 +308,48 @@ toint:
 ; args sequence: rdi (text: text), rsi (pref: text)
 ; output: rax (boolean)
 starts_with:
+    ; Saves the following registers:
     push rbx
     push rcx
     push r10
     push rdx
 
-    mov rbx, rdi ; text
-    mov rcx, rsi
-    mov rdi, rcx  
+    mov rbx, rdi            ; Sets the first argument (text) in rbx
+    mov rcx, rsi            ; Sets the second argument (prefix) in rcx
+    mov rdi, rcx            ; Sets the argument to calculate the length of the prefix
     call len
-    mov rsi, rax
-    mov rdi, rbx ; prefix
+    mov rsi, rax            ; Stores the length in rsi
+    mov rdi, rbx            ; Sets the argument to calculate the length of the text
     call len
-    mov r10, rax
-    xor rax, rax
-    xor rbx, rbx
-    mov rdi, rcx  ; text
-    mov rdx, rbx  ; prefix
+    mov r10, rax            ; Stores the length in r10
+    xor rax, rax            ; Zeroes rax
+    xor rbx, rbx            ; Zeroes rbx
+    mov rdi, rcx            ; Puts the text in rdi
+    mov rdx, rbx            ; Puts the prefix in rdx
 .next_char:
-    cmp rsi, 0
+    cmp rsi, 0              ; Compares the length of the prefix with zero
+    jle .done               ; If less or equal, it's done
+    cmp r10, 0              ; Does the same to the length of the text
     jle .done
-    cmp r10, 0
-    jle .done
-    mov al, byte [rdi]
-    mov bl, byte [rdx]
-    cmp rax, rbx
-    jne .done
-    dec rsi
-    inc rdi
-    dec r10
-    inc rdx
-    jmp .next_char
+    mov al, byte [rdi]      ; Moves to al the current byte of the text
+    mov bl, byte [rdx]      ; Moves to bl the current byte of the prefix
+    cmp rax, rbx            ; Compares rax with rbx
+    jne .done               ; If not equal, it's done
+    dec rsi                 ; Decrements the length of the prefix
+    inc rdi                 ; Increments the buffer of the text
+    dec r10                 ; Decrements the length of the text
+    inc rdx                 ; Increments the buffer of the prefix
+    jmp .next_char          ; Restarts the loop
 .done:
-    cmp r10, 0
-    je .yes
+    cmp r10, 0              ; Compares the length of the text with 0
+    je .yes                 
 .no:
-    xor rax, rax
+    xor rax, rax            ; Sets the return as false (0)
     jmp .end_totxt
 .yes:
-    mov rax, 1
+    mov rax, 1              ; Sets the return as true (1)
 .end_totxt:
+    ; Restores the saved registers
     pop rbx
     pop rcx
     pop r10
