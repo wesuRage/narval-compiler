@@ -170,6 +170,7 @@ impl<'a> Checker<'a> {
             Some(Expr::CallExpr(expr)) => self.check_call(expr),
             Some(Expr::Enum(enm)) => self.check_enum(enm),
             Some(Expr::AsmStmt(stmt)) => self.check_asmpiece(stmt),
+            Some(Expr::MemberExpr(ref mut expr)) => self.check_member(expr),
             _ => Some(Void),
         }
     }
@@ -677,10 +678,14 @@ impl<'a> Checker<'a> {
 
                     let p: &Datatype = params[i].1.as_ref().unwrap();
 
-                    if !(at == *p || at.cast(&p).expect("Unable to parse void types.") == *p) {
+                    if !(at == *p || at.cast(&p).unwrap_or(_NOTYPE) == *p) {
                         self.error(
                             *arg.clone(),
-                            format!("Expected type {} here, but found {}.", p, at).as_str(),
+                            format!(
+                                "Expected type {} here for argument \"{}\", but found {}.",
+                                p, params[i].0, at
+                            )
+                            .as_str(),
                         )
                     }
                 }
@@ -709,5 +714,19 @@ impl<'a> Checker<'a> {
         }
 
         Some(Void)
+    }
+
+    fn check_member(&mut self, expr: &mut MemberExpr) -> Dt {
+        let objt: Option<Datatype> = self.check(self.expr2stmt(*expr.clone().object));
+        if let Some(Object(_)) = objt {
+            //infelizmente, por restrições do if let, vou ter que fazer essa gambiarra
+        } else {
+            self.error(
+                *expr.clone().object,
+                "Attempting to use property-access in a non-object value.",
+            );
+        }
+
+        None
     }
 }
