@@ -1,14 +1,1 @@
-label slashe(qword target: integer): qword integer {
-    qword niggatron: integer = (2 + target) ** 3;
-    resto(niggatron)
-}
 
-label resto(qword numero: integer): integer{
-    qword rest: integer = numero % 4;
-    rest
-}
-
-
-qword num: integer = slashe(9);
-qword string: text = totxt(num);
-write(string);
