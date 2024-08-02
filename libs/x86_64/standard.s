@@ -271,6 +271,10 @@ dtotxt:
 ; args sequence: rdi (input: text)
 ; output: rax (integer)
 toint:
+    ; Saves rbx and rcx
+    push rbx
+    push rcx
+
     xor rcx, rcx           ; Reset signal flag
     xor rax, rax           ; Reset result
 
@@ -288,10 +292,14 @@ toint:
     mov bl, byte [rdi]     ; Moves the current byte of rdi to bl
     cmp bl, 0              ; Compares the byte with 0
     je .end_to_int         ; If equals, jumps to the end of the conversion
-    sub bl, '0'            ; Subtracts '0' from this byte
+    cmp bl, '0'            ; Checks if bl is a digit
+    jb .end_to_int         ; If not a digit, end conversion (you may handle errors here)
+    cmp bl, '9'
+    ja .end_to_int         ; If not a digit, end conversion (you may handle errors here)
+    sub bl, '0'            ; Subtract '0' from this byte to get the numeric value
     imul rax, rax, 10      ; Multiplies rax by 10 and stores the result in rax
-    add rax, rbx           ; Adds rbx to rax
-    inc rdi                ; Increments the string
+    add rax, rbx           ; Adds the numeric value to rax
+    inc rdi                ; Increments the string pointer
     jmp .loop              ; Restarts the loop
 
 .end_to_int:
@@ -301,7 +309,11 @@ toint:
     neg rax
 
 .no_negative:
+    pop rcx
+    pop rbx
+
     ret
+
 
 ;--------------------------------------------------
 ; Starts With
