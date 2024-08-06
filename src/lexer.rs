@@ -46,6 +46,7 @@ pub enum TokenType {
     Identifier,
     If,
     Import,
+    In,
     Increment,
     Integer,
     IntegerDiv,
@@ -189,6 +190,7 @@ impl TokenDefinitions {
         keywords.insert("for", TokenType::For);
         keywords.insert("if", TokenType::If);
         keywords.insert("import", TokenType::Import);
+        keywords.insert("in", TokenType::In);
         keywords.insert("integer", TokenType::Integer);
         keywords.insert("label", TokenType::Label);
         keywords.insert("loop", TokenType::Loop);
