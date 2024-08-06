@@ -52,6 +52,7 @@ pub enum NodeType {
     RangeExpr,
     _EOL,
 }
+
 #[derive(Debug, Clone)]
 pub enum Expr {
     ImportStmt(ImportStmt),
@@ -96,6 +97,49 @@ pub enum Expr {
     RangeExpr(Box<RangeExpr>),
     UnaryBitwiseNotExpr(UnaryBitwiseNotExpr),
     _EOL(_EOL),
+}
+
+impl PartialEq for Expr {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Expr::BinaryExpr(b1), Expr::BinaryExpr(b2)) => {
+                if b1.left == b2.left && b1.operator == b2.operator && b1.right == b2.right {
+                    true
+                } else {
+                    false
+                }
+            }
+            (Expr::BooleanLiteral(b1), Expr::BooleanLiteral(b2)) => {
+                if b1.value == b2.value {
+                    true
+                } else {
+                    false
+                }
+            }
+            (Expr::Identifier(i1), Expr::Identifier(i2)) => {
+                if i1.symbol == i2.symbol {
+                    true
+                } else {
+                    false
+                }
+            }
+            (Expr::NumericLiteral(n1), Expr::NumericLiteral(n2)) => {
+                if n1.value == n2.value {
+                    true
+                } else {
+                    false
+                }
+            }
+            (Expr::StringLiteral(s1), Expr::StringLiteral(s2)) => {
+                if s1.value == s2.value {
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
 }
 
 // Implementação de métodos para a enumeração Expr
@@ -649,7 +693,7 @@ pub struct ArrayExpr {
 #[derive(Debug, Clone)]
 pub struct ArrayAccess {
     pub kind: NodeType,
-    pub array: Box<Expr>, // mano ce vai usar aquela função hash ainda? responde no zap
+    pub array: Box<Expr>,
     pub index: Box<Expr>,
     pub typ: RefCell<Option<Datatype>>,
     pub column: (usize, usize),
