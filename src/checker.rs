@@ -57,7 +57,7 @@ impl Namespace {
         return self.names.contains_key(name.as_str());
     }
 
-    pub fn getvar(&mut self, name: String) -> Result<Option<Datatype>, String> {
+    pub fn getvar(&mut self, name: &String) -> Result<Option<Datatype>, String> {
         if !self.existsvar(name.clone()) {
             if let Some(parent) = &self.parent {
                 return parent.borrow_mut().getvar(name);
@@ -66,7 +66,7 @@ impl Namespace {
             }
         }
 
-        Ok(Some(self.names.get(&name).unwrap().1.clone()))
+        Ok(Some(self.names.get(name).unwrap().1.clone()))
     }
 }
 
@@ -89,7 +89,7 @@ type Dt = Option<Datatype>;
 
 impl<'a> Checker<'a> {
     pub fn new(
-        mut tree: &'a Program,
+        tree: &'a Program,
         namespacearr: &'a mut Vec<Namespace>,
         source_code: &str,
         filename: &'a String,
@@ -117,8 +117,8 @@ impl<'a> Checker<'a> {
     pub fn inject_value(&mut self, name: String, tdef: Datatype) {
         self.newvar(name, Some(tdef), true);
     }
-    pub fn check(&mut self, mut stmt: Stmt) -> Dt {
-        if let Some(ret) = stmt.return_stmt {
+    pub fn check(&mut self, stmt: &Stmt) -> Dt {
+        if let Some(ret) = &stmt.return_stmt {
             if self.current_body.0 == 0 {
                 self.error_wdata(
                     (ret.position, ret.column, ret.lineno),
@@ -126,8 +126,8 @@ impl<'a> Checker<'a> {
                 );
                 return Some(Void);
             }
-            if let Some(value) = ret.argument {
-                let dt = self.check(self.expr2stmt(value.clone()));
+            if let Some(value) = &ret.argument {
+                let dt = self.check(&self.expr2stmt(value.to_owned()));
 
                 if let (Some(fdt), Some(rdt)) = (self.current_body.1.clone(), dt) {
                     if rdt != fdt {
@@ -153,25 +153,28 @@ impl<'a> Checker<'a> {
 
             return Some(Void);
         }
-        match stmt.expr {
-            Some(Expr::Identifier(id)) => self.check_id(id),
-            Some(Expr::VoidLiteral(_)) => Some(Void),
-            Some(Expr::NumericLiteral(_)) => Some(Integer),
-            Some(Expr::StringLiteral(_)) => Some(Text),
-            Some(Expr::BooleanLiteral(_)) => Some(Boolean),
-            Some(Expr::ObjectLiteral(ref mut object)) => self.check_object(object),
-            Some(Expr::VarDeclaration(decl)) => self.check_newvar(decl),
-            Some(Expr::AssignmentExpr(expr)) => self.check_setvar(expr),
-            Some(Expr::BinaryExpr(ref mut expr)) => self.check_binop(expr),
-            Some(Expr::ArrayExpr(expr)) => self.check_array(expr),
-            Some(Expr::FunctionDeclaration(decl)) => self.check_label(decl),
-            Some(Expr::_EOL(_)) => self.finalize_label(),
-            Some(Expr::IfStmt(stmt)) => self.check_if(stmt),
-            Some(Expr::CallExpr(expr)) => self.check_call(expr),
-            Some(Expr::Enum(enm)) => self.check_enum(enm),
-            Some(Expr::AsmStmt(stmt)) => self.check_asmpiece(stmt),
-            Some(Expr::MemberExpr(ref mut expr)) => self.check_member(expr),
-            _ => Some(Void),
+
+        unsafe {
+            match &stmt.expr {
+                Some(Expr::Identifier(ref id)) => self.check_id(id),
+                Some(Expr::VoidLiteral(_)) => Some(Void),
+                Some(Expr::NumericLiteral(_)) => Some(Integer),
+                Some(Expr::StringLiteral(_)) => Some(Text),
+                Some(Expr::BooleanLiteral(_)) => Some(Boolean),
+                Some(Expr::ObjectLiteral(ref object)) => self.check_object(object),
+                Some(Expr::VarDeclaration(ref decl)) => self.check_newvar(decl),
+                Some(Expr::AssignmentExpr(ref expr)) => self.check_setvar(expr),
+                Some(Expr::BinaryExpr(ref expr)) => self.check_binop(expr),
+                Some(Expr::ArrayExpr(ref expr)) => self.check_array(expr),
+                Some(Expr::FunctionDeclaration(ref decl)) => self.check_label(decl),
+                Some(Expr::_EOL(_)) => self.finalize_label(),
+                Some(Expr::IfStmt(ref stmt)) => self.check_if(stmt),
+                Some(Expr::CallExpr(ref expr)) => self.check_call(expr),
+                Some(Expr::Enum(ref enm)) => self.check_enum(enm),
+                Some(Expr::AsmStmt(ref stmt)) => self.check_asmpiece(stmt),
+                Some(Expr::MemberExpr(ref expr)) => self.check_member(expr),
+                _ => Some(Void),
+            }
         }
     }
 
@@ -194,27 +197,27 @@ impl<'a> Checker<'a> {
         );
         printc(&formatted_message);
     }
-    fn error(&mut self, node: Expr, message: &str) {
+    fn error(&mut self, node: &Expr, message: &str) {
         self.error_wdata(node.local(), message);
     }
 
-    fn check_id(&mut self, expr: Identifier) -> Dt {
-        return match self.namespace.getvar(expr.clone().symbol) {
+    fn check_id(&mut self, expr: &Identifier) -> Dt {
+        return match self.namespace.getvar(&expr.symbol) {
             Ok(value) => value.clone(),
             Err(error) => {
-                self.error(Expr::Identifier(expr.clone()), &error);
+                self.error(&Expr::Identifier(expr.clone()), &error);
                 Some(Void)
             }
         };
     }
 
-    fn check_brute_id(&mut self, expr: String) -> Dt {
-        return match self.namespace.getvar(expr.clone()) {
+    fn check_brute_id(&mut self, expr: &String) -> Dt {
+        return match self.namespace.getvar(&expr) {
             Ok(Some(value)) => Some(value),
             Ok(None) => None,
             Err(error) => {
                 self.error(
-                    Expr::StringLiteral(StringLiteral {
+                    &Expr::StringLiteral(StringLiteral {
                         kind: NodeType::StringLiteral,
                         value: expr.clone(),
                         typ: Some(Text),
@@ -231,6 +234,7 @@ impl<'a> Checker<'a> {
 
     fn expr2stmt(&self, expr: Expr) -> Stmt {
         let data: ((usize, usize), (usize, usize), usize) = expr.local();
+
         Stmt {
             kind: expr.kind(),
             expr: Some(expr),
@@ -241,17 +245,16 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn check_object(&mut self, expr: &mut ObjectLiteral) -> Dt {
+    unsafe fn check_object(&mut self, expr: &ObjectLiteral) -> Dt {
         let mut types: Vec<Datatype> = Vec::new();
-
-        for prop in expr.properties.clone() {
-            let key: String = prop.key;
-            let value: Option<Box<Expr>> = prop.value;
+        for prop in &expr.properties {
+            let key: &String = &prop.key;
+            let value: &Option<Box<Expr>> = &prop.value;
             if let Some(v) = value {
-                let stmt: Stmt = self.expr2stmt(*v);
-                let dt: Datatype = self.check(stmt.clone()).unwrap();
+                let stmt: Stmt = self.expr2stmt(v.as_ref().to_owned());
+                let dt: &Datatype = &self.check(&stmt).unwrap();
                 if !(types.contains(&dt)) {
-                    types.push(dt);
+                    types.push(dt.clone());
                 }
             } else {
                 let dt: Option<Datatype> = self.check_brute_id(key);
@@ -262,7 +265,6 @@ impl<'a> Checker<'a> {
         }
 
         return if types.len() == 1 {
-            // pra mim tu escreveu igual o flash e apagou
             if Some(types[0].clone()).is_none() {
                 return Some(Void);
             }
@@ -281,12 +283,12 @@ impl<'a> Checker<'a> {
                 .expect("Error while creating new variable");
         }
     }
-    fn check_newvar(&mut self, decl: VarDeclaration) -> Dt {
-        let dt: Option<Datatype> = self.check(self.expr2stmt(*(decl.clone().value)));
+    unsafe fn check_newvar(&mut self, decl: &VarDeclaration) -> Dt {
+        let dt: Option<Datatype> = self.check(&self.expr2stmt(*decl.clone().value));
         if let Some(datatyp) = dt.clone() {
             if !decl.inferred && decl.data_type != datatyp {
                 self.error(
-                    *(decl.clone().value),
+                    &*(decl.value),
                     format!(
                         "Type mismatch: expected type {} for value, but found {}",
                         decl.data_type, datatyp
@@ -294,33 +296,33 @@ impl<'a> Checker<'a> {
                     .as_str(),
                 )
             }
-            self.newvar(decl.identifier.unwrap(), dt, false);
+            self.newvar(decl.identifier.clone().unwrap(), dt, false);
             None
         } else {
             None
         }
     }
 
-    fn check_setvar(&mut self, expr: AssignmentExpr) -> Dt {
-        let assigne: Expr = *(expr.assigne);
-        let value: Expr = *(expr.value);
+    fn check_setvar(&mut self, expr: &AssignmentExpr) -> Dt {
+        let assigne: &Expr = &*expr.assigne;
+        let value: &Expr = &*expr.value;
 
         if assigne.kind() != NodeType::Identifier {
             self.error(
-                assigne.clone(),
+                &assigne,
                 format!("Expected Identifier here, but found {:?}.", assigne.kind()).as_str(),
             );
             return None;
         }
 
-        let dt = self.check(self.expr2stmt(value));
+        let dt: Option<Datatype> = self.check(&self.expr2stmt(value.to_owned()));
 
         if let Expr::Identifier(id) = assigne.clone() {
             if self.namespace.existsvar(id.clone().symbol) {
                 let sucess = self.namespace.setvar(id.symbol, dt.unwrap());
                 match sucess {
                     Ok(_) => (),
-                    Err(error) => self.error(assigne, error.as_str()),
+                    Err(error) => self.error(&assigne, error.as_str()),
                 }
                 return None;
             } else {
@@ -330,9 +332,9 @@ impl<'a> Checker<'a> {
         None
     }
 
-    fn check_binop(&mut self, expr: &mut BinaryExpr) -> Dt {
-        let left: Option<Datatype> = self.check(self.expr2stmt(*expr.left.clone()));
-        let right: Option<Datatype> = self.check(self.expr2stmt(*expr.right.clone()));
+    fn check_binop(&mut self, expr: &BinaryExpr) -> Dt {
+        let left: Option<Datatype> = self.check(&self.expr2stmt(*expr.left.clone()));
+        let right: Option<Datatype> = self.check(&self.expr2stmt(*expr.right.clone()));
 
         if let (Some(l), Some(r)) = (left, right) {
             let op = expr.operator.as_str();
@@ -343,7 +345,7 @@ impl<'a> Checker<'a> {
 
                     if isntnum_l && !isntnum_r {
                         self.error(
-                            *expr.left.clone(),
+                            &*expr.left,
                             format!(
                                 "Attempting to use non-numerical types in \"{}\" operation.",
                                 op
@@ -352,7 +354,7 @@ impl<'a> Checker<'a> {
                         );
                     } else if !isntnum_l && isntnum_r {
                         self.error(
-                            *expr.right.clone(),
+                            &*expr.right,
                             format!(
                                 "Attempting to use non-numerical types in \"{}\" operation.",
                                 op
@@ -361,7 +363,7 @@ impl<'a> Checker<'a> {
                         );
                     } else if isntnum_l && isntnum_r {
                         self.error(
-                            Expr::BinaryExpr(expr.clone()),
+                            &Expr::BinaryExpr(expr.clone()),
                             format!(
                                 "Attempting to use non-numerical types in \"{}\" operation.",
                                 op
@@ -377,7 +379,7 @@ impl<'a> Checker<'a> {
                             Some(dt)
                         }
                         Err(err) => {
-                            self.error(Expr::BinaryExpr(expr.clone()), err.as_str());
+                            self.error(&Expr::BinaryExpr(expr.clone()), err.as_str());
                             Some(Void)
                         }
                     }
@@ -386,7 +388,7 @@ impl<'a> Checker<'a> {
                     if l == Text {
                         if r != Integer {
                             self.error(
-                                Expr::BinaryExpr(expr.clone()),
+                                &Expr::BinaryExpr(expr.clone()),
                                 "Can't repeat a string using non-integer values.",
                             );
                         }
@@ -399,7 +401,7 @@ impl<'a> Checker<'a> {
 
                         if isntnum_l && !isntnum_r {
                             self.error(
-                                *expr.left.clone(),
+                                &*expr.left,
                                 format!(
                                     "Attempting to use non-numerical types in \"{}\" operation.",
                                     op
@@ -408,7 +410,7 @@ impl<'a> Checker<'a> {
                             );
                         } else if !isntnum_l && isntnum_r {
                             self.error(
-                                *expr.right.clone(),
+                                &*expr.right,
                                 format!(
                                     "Attempting to use non-numerical types in \"{}\" operation.",
                                     op
@@ -417,7 +419,7 @@ impl<'a> Checker<'a> {
                             );
                         } else if isntnum_l && isntnum_r {
                             self.error(
-                                Expr::BinaryExpr(expr.clone()),
+                                &Expr::BinaryExpr(expr.clone()),
                                 format!(
                                     "Attempting to use non-numerical types in \"{}\" operation.",
                                     op
@@ -433,7 +435,7 @@ impl<'a> Checker<'a> {
                                 Some(dt)
                             }
                             Err(err) => {
-                                self.error(Expr::BinaryExpr(expr.clone()), err.as_str());
+                                self.error(&Expr::BinaryExpr(expr.clone()), err.as_str());
                                 Some(Void)
                             }
                         }
@@ -450,7 +452,7 @@ impl<'a> Checker<'a> {
 
                     if isntnum_l && !isntnum_r {
                         self.error(
-                            *expr.left.clone(),
+                            &*expr.left,
                             format!(
                                 "Attempting to use non-numerical types in \"{}\" comparison operation.",
                                 op
@@ -459,7 +461,7 @@ impl<'a> Checker<'a> {
                         );
                     } else if !isntnum_l && isntnum_r {
                         self.error(
-                            *expr.right.clone(),
+                            &*expr.right,
                             format!(
                                 "Attempting to use non-numerical types in \"{}\" comparison operation.",
                                 op
@@ -468,7 +470,7 @@ impl<'a> Checker<'a> {
                         );
                     } else if isntnum_l && isntnum_r {
                         self.error(
-                            Expr::BinaryExpr(expr.clone()),
+                            &Expr::BinaryExpr(expr.clone()),
                             format!(
                                 "Attempting to use non-numerical types in \"{}\" comparison operation.",
                                 op
@@ -485,7 +487,7 @@ impl<'a> Checker<'a> {
                             return t;
                         }
                         Err(err) => {
-                            self.error(Expr::BinaryExpr(expr.clone()), err.as_str());
+                            self.error(&Expr::BinaryExpr(expr.clone()), err.as_str());
                             Some(Void)
                         }
                     }
@@ -498,23 +500,23 @@ impl<'a> Checker<'a> {
                         (Ok(a), Ok(b)) => {
                             if a != Integer {
                                 self.error(
-                                    *expr.left.clone(),
+                                    &*expr.left,
                                     format!("Expected an Integer here, not {}.", a).as_str(),
                                 );
                             }
 
                             if a != b {
                                 self.error(
-                                    *expr.right.clone(),
+                                    &*expr.right,
                                     format!("Expected an Integer here, not {}.", b).as_str(),
                                 );
                             }
                         }
                         (Err(err), _) => {
-                            self.error(*expr.left.clone(), err.as_str());
+                            self.error(&*expr.left, err.as_str());
                         }
                         (Ok(_), Err(err)) => {
-                            self.error(*expr.right.clone(), err.as_str());
+                            self.error(&*expr.right, err.as_str());
                         }
                     }
                     let t = Some(Integer);
@@ -528,11 +530,11 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn check_array(&mut self, expr: ArrayExpr) -> Dt {
+    fn check_array(&mut self, expr: &ArrayExpr) -> Dt {
         let mut types: Vec<Datatype> = Vec::new();
 
         for e in &expr.elements {
-            let dt: Option<Datatype> = self.check(self.expr2stmt(e.clone())).clone();
+            let dt: Option<Datatype> = self.check(&self.expr2stmt(e.clone())).clone();
             if !(types.contains(&dt.clone()?)) {
                 types.push(dt.clone()?);
             }
@@ -541,14 +543,16 @@ impl<'a> Checker<'a> {
         if types.len() == 1 {
             return Some(Array(Box::new(types[0].clone())));
         } else {
-            self.error(Expr::ArrayExpr(expr), "Arrays can't be multitype!");
+            self.error(
+                &Expr::ArrayExpr(expr.to_owned()),
+                "Arrays can't be multitype!",
+            );
             Some(Void)
         }
     }
 
     fn pushbody(&mut self, body: &mut Vec<Stmt>, name: String, rettype: Datatype) {
         self.func_id += 1;
-        //
         self.bodies
             .push((self.func_id, Some(rettype), body.to_vec()));
         self.funcnames.push(name);
@@ -585,8 +589,8 @@ impl<'a> Checker<'a> {
         &mut self.namespaces[self.current_namespace_index]
     }
 
-    fn check_label(&mut self, declt: Box<FunctionDeclaration>) -> Dt {
-        let decl: FunctionDeclaration = *declt;
+    fn check_label(&mut self, declt: &Box<FunctionDeclaration>) -> Dt {
+        let decl: FunctionDeclaration = *declt.clone();
         let mut params: Vec<(String, Option<Datatype>)> = Vec::new();
         let mut body: Vec<Stmt> = decl.body;
         for (_size, name, t) in decl.parameters {
@@ -620,34 +624,34 @@ impl<'a> Checker<'a> {
         None
     }
 
-    fn check_if(&mut self, stat: Box<IfStmt>) -> Dt {
-        let stmt: IfStmt = *stat;
+    fn check_if(&mut self, stat: &Box<IfStmt>) -> Dt {
+        let stmt: IfStmt = *stat.clone();
 
-        let dt: Datatype = self.check(self.expr2stmt(*stmt.test.clone())).unwrap();
+        let dt: Datatype = self.check(&self.expr2stmt(*stmt.test.clone())).unwrap();
 
         match dt.cast(&Boolean) {
             Ok(casted) => {
                 if casted != Boolean {
                     self.error(
-                        *stmt.test,
+                        &*stmt.test,
                         "If's test expressions must to be boolean expressions.",
                     );
                 }
             }
             Err(error) => {
-                self.error(*stmt.test, &error.as_str());
+                self.error(&*stmt.test, &error.as_str());
             }
         }
 
         self.pushns();
         for s in stmt.consequent {
-            self.check(s);
+            self.check(&s);
         }
         self.popns();
         if let Some(alt) = stmt.alternate {
             self.pushns();
             for s in alt {
-                self.check(s);
+                self.check(&s);
             }
             self.popns();
         }
@@ -655,15 +659,15 @@ impl<'a> Checker<'a> {
         Some(Void)
     }
 
-    fn check_call(&mut self, call: CallExpr) -> Dt {
-        let caller_t = self.check(self.expr2stmt(*call.clone().caller));
+    fn check_call(&mut self, call: &CallExpr) -> Dt {
+        let caller_t = self.check(&self.expr2stmt(*call.clone().caller));
         let mut rt: Dt = None;
         if let Some(ct) = caller_t {
             if let Function((params, rettype)) = ct {
                 let fplen = params.len();
                 if &call.clone().args.len() != &fplen {
                     self.error(
-                        Expr::CallExpr(call.clone()),
+                        &Expr::CallExpr(call.clone()),
                         format!(
                             "Expected {} arguments here, but found {}.",
                             fplen,
@@ -673,14 +677,14 @@ impl<'a> Checker<'a> {
                     );
                 }
 
-                for (i, arg) in call.args.into_iter().enumerate() {
-                    let at: Datatype = self.check(self.expr2stmt(*arg.clone())).unwrap_or(Void);
+                for (i, arg) in call.clone().args.into_iter().enumerate() {
+                    let at: Datatype = self.check(&self.expr2stmt(*arg.clone())).unwrap_or(Void);
 
                     let p: &Datatype = params[i].1.as_ref().unwrap();
 
                     if !(at == *p || at.cast(&p).unwrap_or(_NOTYPE) == *p) {
                         self.error(
-                            *arg.clone(),
+                            &*arg,
                             format!(
                                 "Expected type {} here for argument \"{}\", but found {}.",
                                 p, params[i].0, at
@@ -697,18 +701,18 @@ impl<'a> Checker<'a> {
         rt
     }
 
-    fn check_enum(&mut self, enm: ast::Enum) -> Dt {
-        let et: Option<Datatype> = Some(Datatype::Enum(enm.name.clone(), enm.items));
-        self.newvar(enm.name, et.clone(), true);
+    fn check_enum(&mut self, enm: &ast::Enum) -> Dt {
+        let et: Option<Datatype> = Some(Datatype::Enum(enm.name.clone(), enm.items.to_owned()));
+        self.newvar(enm.name.to_owned(), et.clone(), true);
         return et;
     }
 
-    fn check_asmpiece(&mut self, stmt: AsmStmt) -> Dt {
-        for l in stmt.code {
-            let dt = self.check(self.expr2stmt(l.clone()));
+    fn check_asmpiece(&mut self, stmt: &AsmStmt) -> Dt {
+        for l in &stmt.code {
+            let dt: Option<Datatype> = self.check(&self.expr2stmt(l.clone()));
             if let Some(t) = dt {
                 if t != Text {
-                    self.error(l.clone(), format!("Expected Text in assembly statments, but found {}.... %%g(please God forgive this developer, he's a imperfect human being that don't know write assembly).%%!", t).as_str());
+                    self.error(&l, format!("Expected Text in assembly statments, but found {}.... %%g(please God forgive this developer, he's a imperfect human being that don't know write assembly).%%!", t).as_str());
                 }
             }
         }
@@ -716,13 +720,12 @@ impl<'a> Checker<'a> {
         Some(Void)
     }
 
-    fn check_member(&mut self, expr: &mut MemberExpr) -> Dt {
-        let objt: Option<Datatype> = self.check(self.expr2stmt(*expr.clone().object));
+    fn check_member(&mut self, expr: &MemberExpr) -> Dt {
+        let objt: Option<Datatype> = self.check(&self.expr2stmt(*expr.clone().object));
         if let Some(Object(_)) = objt {
-            //infelizmente, por restrições do if let, vou ter que fazer essa gambiarra
         } else {
             self.error(
-                *expr.clone().object,
+                &*expr.clone().object,
                 "Attempting to use property-access in a non-object value.",
             );
         }
