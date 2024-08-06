@@ -1,15 +1,24 @@
 include "./linux.s"
 
 segment readable writeable
+    __WRITE_TYPE_ERROR_STR_PTR db 0x1B, "[31m", "TypeError:", 0x1B, "[33m", " Attempt of writing a non Text value.", 0x1B, "[0m", 0x0
+    __TOTXT_ERR_TEXT_STR_PTR db 0x1B, "[31m", "TypeError:", 0x1B, "[33m", " Can't convert Text into Text.", 0x1B, "[0m", 0x0
+    __TOTXT_ERR_UNKNOWN_STR_PTR db 0x1B, "[31m", "TypeError:", 0x1B, "[33m", " Unknown value set to conversion.", 0x1B, "[0m", 0x0
+
+    __WRITE_TYPE_ERROR dq 2, __WRITE_TYPE_ERROR_STR_PTR
+    __TOTXT_ERR_TEXT dq 2, __TOTXT_ERR_TEXT_STR_PTR
+    __TOTXT_ERR_UNKNOWN dq 2, __TOTXT_ERR_UNKNOWN_STR_PTR
+
     __TEMP_STRING_BUFFER rb 1024*1024
-    __STANDARD_NEWLINE db 0x0A
-    __STANDARD_CLEAR db 0x1B, "[H", 0x1B, "[2J", 0
+    __STANDARD_NEWLINE db 0xA
+    __STANDARD_CLEAR db 0x1B, "[H", 0x1B, "[2J", 0x0
+    __TOTXT_BUFFER dq 0, 0
 
 
 segment readable executable
 ;--------------------------------------------------
 ; String Multiplier
-; args sequence: rdi (str: text), rsi (n: integer)
+; args sequence: rdi (str: text), rsi (times: integer)
 ; output: rax (text)
 __txt_repeater:
 
@@ -148,20 +157,36 @@ open:
 ; output: rax (integer)
 
 write:
-    ; save rbx, rsi and rdx
+    ; Saves rbx, rsi and rdx
     push rbx
     push rsi
     push rdx
 
-    mov rbx, rdi                 ; Saves the first argument in rbx and keeps it to the len function
+    mov rbx, rdi
+    cmp byte [rbx], 2
+    jne .write_error
+    mov rdi, qword [rbx+8]
     call len                     ; Uses the value of rdi as first argument to calculate the length
     
+    mov rsi, qword [rbx+8]     ; Uses the saved value of the string in rsi
     mov rdi, STD_OUT             ; Moves the file descriptor to rdi
-    mov rsi, rbx                 ; Uses the saved value of the string in rsi
     mov rdx, rax                 ; Uses the return value of the function len as the size
     mov rax, SYS_write           ; Syscall of write
     syscall
 
+    jmp .write_end
+
+.write_error:
+    mov rdi, __WRITE_TYPE_ERROR
+    call write
+    
+    pop rbx
+    pop rsi
+    pop rdx
+    
+    ret
+
+.write_end:
     mov rax, SYS_write           ; Syscall of write
     mov rdi, STD_OUT             ; Moves the file descriptor to rdi
     mov rsi, __STANDARD_NEWLINE  ; Moves a pointer of a newline character to rsi
@@ -173,14 +198,12 @@ write:
     pop rsi
     pop rdx
     
-
     ret
 
 ;--------------------------------------------------
 ; Length of string
 ; args sequence: rdi (input: text)
 ; output: rax (integer)
-
 len:
     push rbx            ; Saves rbx
 
@@ -210,20 +233,39 @@ totxt:
     push rsi
     push r9
 
+    cmp byte [rdi], 2 ; compara o primeiro byte de rdi com 2 (flag text)
+    je .totxt_err_text ; if is text, raise an error
+    cmp byte [rdi], 0  ; flag integer
+    jne .totxt_err_unknown
+    jmp .totxt_start ; else, starts the conversion
+
+.totxt_err_unknown:
+    mov rdi, __TOTXT_ERR_UNKNOWN ; moves the error message to
+    call write
+    
+    jmp .totxt_end
+
+.totxt_err_text:
+    mov rdi, __TOTXT_ERR_TEXT ; moves the error message to rdi (write label buffer argument)
+        call write ; obvious
+    
+    jmp .totxt_end
+
+.totxt_start:
     sub rsp, 32             ; Allocate 32 bytes on the stack for temporary use
     mov rsi, rsp            ; Set rsi to point to the top of the allocated space
     add rsi, 31             ; Move rsi to the end of the allocated space
     mov byte [rsi], 0       ; Initialize the last byte of the allocated space with 0 (null terminator)
     dec rsi                 ; Move rsi one byte back to start writing the string
 
-    mov rax, rdi            ; Move the integer pointer from rdi to rax
+    mov rax, qword [rdi+8]  ; Move the integer pointer from rdi to rax
     mov r9b, 0              ; Initialize r9b to 0 (to be used later for the sign)
     cmp rax, 0              ; Compare the number with 0
-    jge .totxt_start              ; If the number is greater than or equal to 0, jump to the .start label
+    jge .totxt_start_conv   ; If the number is greater than or equal to 0, jump to the .start label
     neg rax                 ; If the number is negative, negate the number
     mov r9b, '-'            ; Set r9b to '-' to indicate a negative sign
 
-.totxt_start:
+.totxt_start_conv:
     xor rcx, rcx            ; Clear the register rcx (digit counter)
 
 .totxt_loop:
@@ -244,9 +286,12 @@ totxt:
     mov [rsi], r9b          ; Store the sign at the correct position
 
 .totxt_positive:
+    dec rsi
+    mov byte [rsi], 0x2
     mov rax, rsi            ; Move the address of the start of the string to rax
     add rsp, 32             ; Restore the stack pointer (remove the allocated space)
 
+.totxt_end:
     pop r9                  ; Restore the values of the following registers: r9, rsi, rdx, rcx, and rbx
     pop rsi
     pop rdx

@@ -16,6 +16,9 @@ pub struct X8664Generator<'a> {
     pub identifier: HashMap<String, (String, NodeType)>,
     pub strings: HashMap<String, (String, Option<String>)>,
     pub unitialized_strings_counter: usize,
+    pub unitialized_integer_counter: usize,
+    pub string_pointer_counter: usize,
+    pub integer_pointer_counter: usize,
     pub temp_return_counter: usize,
     pub memory_access: bool,
     pub current_string: Option<String>,
@@ -34,7 +37,7 @@ pub struct Segments {
 
 #[derive(Clone, Debug)]
 enum CallerType {
-    Int(i128),
+    Int(String),
     Id(String),
     Str(String),
 }
@@ -55,7 +58,10 @@ impl<'a> X8664Generator<'a> {
         let identifier: HashMap<String, (String, NodeType)> = HashMap::new();
         let strings: HashMap<String, (String, Option<String>)> = HashMap::new();
         let unitialized_strings_counter: usize = 0;
+        let unitialized_integer_counter: usize = 0;
         let temp_return_counter: usize = 0;
+        let string_pointer_counter: usize = 0;
+        let integer_pointer_counter: usize = 0;
         let memory_access: bool = false;
         let current_string: Option<String> = None;
         let current_int: i32 = 0;
@@ -74,7 +80,10 @@ impl<'a> X8664Generator<'a> {
             identifier,
             strings,
             unitialized_strings_counter,
+            unitialized_integer_counter,
             temp_return_counter,
+            string_pointer_counter,
+            integer_pointer_counter,
             memory_access,
             current_string,
             current_int,
@@ -311,136 +320,6 @@ impl<'a> X8664Generator<'a> {
         scope.push("\n".to_string());
     }
 
-    fn generate_call_expr_id(
-        &mut self,
-        id: String,
-        parameter_index: usize,
-        scope: &mut Vec<String>,
-    ) {
-        if self.memory_access {
-            self.memory_access = false;
-            let split_temp: Vec<&str> = id.split('[').collect();
-            let extracted_id = split_temp.last().unwrap().replace("]", "");
-
-            let mut directive: String = "db".to_string();
-            let registers = vec![
-                "rdi", "rsi", "rdx", "r10", "r8", "r9", "r11", "r12", "r13", "r14", "r15", "rcx",
-                "rbx",
-            ];
-
-            let mut not_register: bool = true;
-
-            for register in registers {
-                if register == &extracted_id {
-                    not_register = false;
-                }
-            }
-
-            if not_register {
-                directive = self
-                    .identifier
-                    .get(&extracted_id)
-                    .map(|(d, _)| d.clone())
-                    .unwrap();
-            }
-
-            if directive != "dq" {
-                let equivalent_directive = self.return_inverse_constant_directive_size(&directive);
-
-                if let Some(ident) = Some(extracted_id.clone()) {
-                    if let Some(_) = self.identifier.get(&ident) {
-                        self.memory_access = true;
-
-                        let param: Option<&&str> =
-                            self.function_parameter.get(&ident).map(|(_, stack)| stack);
-
-                        if let Some(parameter) = param {
-                            scope.push(format!(
-                                "\tmovzx {}, {} [{}]\n",
-                                self.asm_parameters[parameter_index],
-                                equivalent_directive,
-                                parameter
-                            ));
-                        } else {
-                            let local = self.local_identifier.get(&ident).map(|id| id);
-                            if let Some(id) = local {
-                                scope.push(format!(
-                                    "\tmovzx {}, {} [{}]\n",
-                                    self.asm_parameters[parameter_index], equivalent_directive, id
-                                ));
-                            } else {
-                                scope.push(format!(
-                                    "\tmovzx {}, {} [{}]\n",
-                                    self.asm_parameters[parameter_index],
-                                    equivalent_directive,
-                                    ident
-                                ));
-                            }
-                        }
-                    }
-                }
-            } else {
-                if let Some(ident) = Some(extracted_id.clone()) {
-                    if let Some(_) = self.identifier.get(&ident) {
-                        self.memory_access = true;
-
-                        let param: Option<&&str> =
-                            self.function_parameter.get(&ident).map(|(_, stack)| stack);
-
-                        if let Some(parameter) = param {
-                            scope.push(format!(
-                                "\tmov {}, [{}]\n",
-                                self.asm_parameters[parameter_index], parameter
-                            ));
-                        } else {
-                            let local = self.local_identifier.get(&ident).map(|id| id);
-                            if let Some(id) = local {
-                                scope.push(format!(
-                                    "\tmov {}, [{}]\n",
-                                    self.asm_parameters[parameter_index], id
-                                ));
-                            } else {
-                                scope.push(format!(
-                                    "\tmov {}, [{}]\n",
-                                    self.asm_parameters[parameter_index], ident
-                                ));
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
-            if let Some(ident) = Some(id.clone()) {
-                if let Some(_) = self.identifier.get(&ident) {
-                    self.memory_access = true;
-
-                    let param: Option<&&str> =
-                        self.function_parameter.get(&ident).map(|(_, stack)| stack);
-
-                    if let Some(parameter) = param {
-                        scope.push(format!(
-                            "\tmov {}, {}\n",
-                            self.asm_parameters[parameter_index], parameter
-                        ));
-                    } else {
-                        let local = self.local_identifier.get(&ident).map(|id| id);
-                        if let Some(ide) = local {
-                            scope.push(format!(
-                                "\tmov {}, {}\n",
-                                self.asm_parameters[parameter_index], ide
-                            ));
-                        } else {
-                            scope.push(format!(
-                                "\tmov {}, {}\n",
-                                self.asm_parameters[parameter_index], ident
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     fn generate_call_expr(&mut self, expr: CallExpr, scope: &mut Vec<String>) {
         if let Expr::Identifier(Identifier { symbol, .. }) = *expr.caller {
             let caller: String = symbol;
@@ -455,8 +334,11 @@ impl<'a> X8664Generator<'a> {
                             arg_stack.push(CallerType::Str(existing_identifier.0.clone()));
                         } else {
                             let string = format!(
-                                "\t__STR_{} db \"{}\", 0x0\n",
-                                self.unitialized_strings_counter, str_lit.value
+                                "\t__STR_{}_PTR db \"{}\"\n\t__STR_{} dq 2, __STR_{}_PTR\n",
+                                self.unitialized_strings_counter,
+                                str_lit.value,
+                                self.unitialized_strings_counter,
+                                self.unitialized_strings_counter
                             );
 
                             self.segments.data.push(string);
@@ -472,7 +354,22 @@ impl<'a> X8664Generator<'a> {
                             .value
                             .parse()
                             .expect("Unable to parse numeric literal.");
-                        arg_stack.push(CallerType::Int(value));
+
+                        let integer = format!(
+                            "\t__INT_{}_PTR db {}\n\t__INT_{} db 0, __INT_{}_PTR\n",
+                            self.unitialized_integer_counter,
+                            value,
+                            self.unitialized_integer_counter,
+                            self.unitialized_integer_counter
+                        );
+
+                        self.segments.data.push(integer);
+
+                        arg_stack.push(CallerType::Int(format!(
+                            "__INT_{}",
+                            self.unitialized_integer_counter
+                        )));
+                        self.unitialized_integer_counter += 1;
                     }
                     Expr::Identifier(ref id) => {
                         if self.memory_access {
@@ -480,7 +377,7 @@ impl<'a> X8664Generator<'a> {
                             let size = self.return_inverse_constant_directive_size(
                                 directive.as_deref().unwrap(),
                             );
-                            arg_stack.push(CallerType::Id(format!("{} [{}]", size, id.symbol)))
+                            arg_stack.push(CallerType::Id(format!("{} {}", size, id.symbol)))
                         } else {
                             arg_stack.push(CallerType::Id(id.symbol.clone()));
                         }
@@ -505,7 +402,11 @@ impl<'a> X8664Generator<'a> {
 
             for arg in arg_stack {
                 match arg {
-                    CallerType::Id(id) => self.generate_call_expr_id(id, parameter_index, scope),
+                    CallerType::Id(id) => scope.push(format!(
+                        "\tmov {}, {}\n",
+                        self.asm_parameters[parameter_index],
+                        id.split(" ").last().unwrap()
+                    )),
 
                     CallerType::Int(int) => scope.push(format!(
                         "\tmov {}, {}\n",
@@ -559,20 +460,38 @@ impl<'a> X8664Generator<'a> {
                 } else {
                     let local = self.local_identifier.get(&ident.symbol).map(|id| id);
                     if let Some(id) = local {
-                        scope.push(format!("\tmovzx rax, [{}]\n", id))
+                        scope.push(format!("\tmov rax, [{}+8]\n", id));
+                        let typ = self.identifier.get(id).map(|(_, t)| t).unwrap().to_owned();
+                        if typ != NodeType::BinaryExpr {
+                            scope.push("\tmov rax, [rax]\n".to_string());
+                        }
                     } else {
-                        scope.push(format!("\tmovzx rax, [{}]\n", ident.symbol))
+                        scope.push(format!("\tmov rax, [{}+8]\n", ident.symbol));
+                        let typ = self
+                            .identifier
+                            .get(&ident.symbol)
+                            .map(|(_, t)| t)
+                            .unwrap()
+                            .to_owned();
+                        if typ != NodeType::BinaryExpr {
+                            scope.push("\tmov rax, [rax]\n".to_string());
+                        }
                     }
                 }
             }
             Expr::StringLiteral(string) => {
                 let string = format!(
-                    "\t__STR_{} db \"{}\", 0x0\n",
-                    self.unitialized_strings_counter, string.value
+                    "\t__STR_{}_PTR db \"{}\", 0\n\t__STR_{} dq 2, __STR_{}_PTR\n",
+                    self.unitialized_strings_counter,
+                    string.value,
+                    self.unitialized_strings_counter,
+                    self.unitialized_strings_counter
                 );
 
                 self.segments.data.push(string);
-                self.current_string = Some(format!("__STR_{}", self.unitialized_strings_counter));
+                self.current_string =
+                    Some(format!("[__STR_{}+8]", self.unitialized_strings_counter));
+                self.unitialized_strings_counter += 1;
             }
             _ => {
                 panic!("Unsupported expression type");
@@ -587,12 +506,14 @@ impl<'a> X8664Generator<'a> {
         scope: &mut Vec<String>,
     ) {
         self.generate_expr(*expr.left, identifier.clone(), scope);
+
         scope.push("\tmov rbx, rax\n".to_string());
         self.generate_expr(*expr.right, identifier.clone(), scope);
 
         match expr.operator.as_str() {
             "<<" => {
                 scope.push("\tmov cl, byte [rax]\n".to_string());
+
                 scope.push("\tshl rbx, cl\n".to_string());
             }
             ">>" => {
@@ -618,9 +539,9 @@ impl<'a> X8664Generator<'a> {
                 } else {
                     let local = self.local_identifier.get(&ident).map(|id| id);
                     if let Some(id) = local {
-                        scope.push(format!("\tmov [{}], rax\n", id))
+                        scope.push(format!("\tmov [{}+8], rax\n", id))
                     } else {
-                        scope.push(format!("\tmov [{}], rax\n", ident))
+                        scope.push(format!("\tmov [{}+8], rax\n", ident))
                     }
                 }
             }
@@ -633,22 +554,39 @@ impl<'a> X8664Generator<'a> {
         identifier: Option<String>,
         scope: &mut Vec<String>,
     ) {
-        self.generate_expr(*expr.left, identifier.clone(), scope);
+        let left = *expr.left;
+        let right = *expr.right;
+        let are_eq: bool = left.kind() != NodeType::CallExpr && left == right;
 
-        scope.push("\tmov rbx, rax\n".to_string());
+        self.generate_expr(left, identifier.clone(), scope);
 
-        self.generate_expr(*expr.right, identifier.clone(), scope);
+        if !are_eq {
+            scope.push("\tmov rbx, rax\n".to_string());
 
-        match expr.operator.as_str() {
-            "+" => {
-                scope.push("\tadd rax, rbx\n".to_string());
-                self.generate_mov_identifier(identifier, scope);
+            self.generate_expr(right, identifier.clone(), scope);
+            match expr.operator.as_str() {
+                "+" => {
+                    scope.push("\tadd rax, rbx\n".to_string());
+                    self.generate_mov_identifier(identifier, scope);
+                }
+                "-" => {
+                    scope.push("\tsub rax, rbx\n".to_string());
+                    self.generate_mov_identifier(identifier, scope);
+                }
+                _ => (),
             }
-            "-" => {
-                scope.push("\tsub rax, rbx\n".to_string());
-                self.generate_mov_identifier(identifier, scope);
+        } else {
+            match expr.operator.as_str() {
+                "+" => {
+                    scope.push("\tadd rax, rax\n".to_string());
+                    self.generate_mov_identifier(identifier, scope);
+                }
+                "-" => {
+                    scope.push("\tsub rax, rax\n".to_string());
+                    self.generate_mov_identifier(identifier, scope);
+                }
+                _ => (),
             }
-            _ => (),
         }
     }
 
@@ -659,56 +597,95 @@ impl<'a> X8664Generator<'a> {
         scope: &mut Vec<String>,
     ) {
         match expr.operator.as_str() {
-            "*" => unsafe {
-                if expr.typ.as_ptr().as_ref().unwrap().to_owned().unwrap() == Datatype::Text {
+            "*" => {
+                let typ = match *expr.left {
+                    Expr::StringLiteral(_) => "string",
+                    _ => "nonstring",
+                };
+
+                if typ == "string" {
                     self.generate_expr(*expr.left, identifier.clone(), scope);
 
                     let s: String = <Option<String> as Clone>::clone(&self.current_string).unwrap();
                     self.generate_expr(*expr.right, identifier.clone(), scope);
                     scope.push(format!("\tmov rdi, rax\n"));
                     scope.push(format!("\tmov rsi, {}\n", s));
-                    scope.push("\ncall __txt_repeater\n".to_string());
+                    scope.push("\tcall __txt_repeater\n".to_string());
 
                     self.generate_mov_identifier(identifier, scope);
                 } else {
-                    self.generate_expr(*expr.left, identifier.clone(), scope);
-                    scope.push("\tmov rbx, rax\n".to_string());
-                    self.generate_expr(*expr.right, identifier.clone(), scope);
-                    scope.push("\timul rax, rbx\n".to_string());
+                    let left = *expr.left;
+                    let right = *expr.right;
+
+                    let are_eq: bool = left.kind() != NodeType::CallExpr && left == right;
+
+                    self.generate_expr(left, identifier.clone(), scope);
+                    if !are_eq {
+                        scope.push("\tmov rbx, rax\n".to_string());
+                        self.generate_expr(right, identifier.clone(), scope);
+                        scope.push("\timul rax, rbx\n".to_string());
+                    } else {
+                        scope.push("\timul rax, rax\n".to_string());
+                    }
 
                     self.generate_mov_identifier(identifier, scope);
                 }
-            },
+            }
             "/" => {
-                self.generate_expr(*expr.left.clone(), identifier.clone(), scope);
-                scope.push("\tmov rbx, rax\n".to_string());
-                self.generate_expr(*expr.right.clone(), identifier.clone(), scope);
-                scope.push("\txchg rax, rbx\n".to_string());
-                scope.push("\tcqo\n".to_string());
-                scope.push("\tidiv rbx\n".to_string());
+                let left = *expr.left;
+                let right = *expr.right;
 
+                let are_eq: bool = left.kind() != NodeType::CallExpr && left == right;
+
+                if are_eq {
+                    scope.push("\tmov rax, 1\n".to_string());
+                } else {
+                    self.generate_expr(left, identifier.clone(), scope);
+                    scope.push("\tmov rbx, rax\n".to_string());
+                    self.generate_expr(right, identifier.clone(), scope);
+                    scope.push("\txchg rax, rbx\n".to_string());
+                    scope.push("\tcqo\n".to_string());
+                    scope.push("\tidiv rbx\n".to_string());
+                }
                 self.generate_mov_identifier(identifier, scope);
             }
             "%" => {
-                self.generate_expr(*expr.left.clone(), identifier.clone(), scope);
-                scope.push("\tmov rbx, rax\n".to_string());
-                self.generate_expr(*expr.right.clone(), identifier.clone(), scope);
-                scope.push("\txchg rax, rbx\n".to_string());
-                scope.push("\tcqo\n".to_string());
-                scope.push("\tidiv rbx\n".to_string());
-                scope.push("\tmov rax, rdx\n".to_string());
+                let left = *expr.left;
+                let right = *expr.right;
+
+                let are_eq: bool = left.kind() != NodeType::CallExpr && left == right;
+
+                if are_eq {
+                    scope.push("\txor rax, rax\n".to_string());
+                } else {
+                    self.generate_expr(left, identifier.clone(), scope);
+                    scope.push("\tmov rbx, rax\n".to_string());
+                    self.generate_expr(right, identifier.clone(), scope);
+                    scope.push("\txchg rax, rbx\n".to_string());
+                    scope.push("\tcqo\n".to_string());
+                    scope.push("\tidiv rbx\n".to_string());
+                    scope.push("\tmov rax, rdx\n".to_string());
+                }
 
                 self.generate_mov_identifier(identifier, scope);
             }
 
             "\\" => {
-                self.generate_expr(*expr.left.clone(), identifier.clone(), scope);
-                scope.push("\tmov rbx, rax\n".to_string());
-                self.generate_expr(*expr.right.clone(), identifier.clone(), scope);
-                scope.push("\txchg rax, rbx\n".to_string());
-                scope.push("\tcqo\n".to_string());
-                scope.push("\tidiv rbx\n".to_string());
+                let left = *expr.left;
+                let right = *expr.right;
 
+                let are_eq: bool = left.kind() != NodeType::CallExpr && left == right;
+
+                if are_eq {
+                    scope.push("\tmov rax, 1\n".to_string());
+                } else {
+                    self.generate_expr(left, identifier.clone(), scope);
+                    scope.push("\tmov rbx, rax\n".to_string());
+                    self.generate_expr(right, identifier.clone(), scope);
+                    scope.push("\txchg rax, rbx\n".to_string());
+                    scope.push("\tcqo\n".to_string());
+                    scope.push("\tidiv rbx\n".to_string());
+                }
                 self.generate_mov_identifier(identifier, scope);
             }
             _ => (),
@@ -721,11 +698,19 @@ impl<'a> X8664Generator<'a> {
         identifier: Option<String>,
         scope: &mut Vec<String>,
     ) {
-        self.generate_expr(*expr.left, identifier.clone(), scope);
-        scope.push("\tmov rbx, rax\n".to_string());
-        self.generate_expr(*expr.right, identifier.clone(), scope);
+        let left = *expr.left;
+        let right = *expr.right;
 
-        scope.push("\tmov rdi, rbx\n".to_string());
+        let are_eq: bool = left.kind() != NodeType::CallExpr && left == right;
+
+        self.generate_expr(left, identifier.clone(), scope);
+        if !are_eq {
+            scope.push("\tmov rbx, rax\n".to_string());
+            self.generate_expr(right, identifier.clone(), scope);
+            scope.push("\tmov rdi, rbx\n".to_string());
+        } else {
+            scope.push("\tmov rdi, rax\n".to_string());
+        }
         scope.push("\tmov rsi, rax\n".to_string());
         scope.push("\tcall __pow\n".to_string());
 
@@ -754,6 +739,7 @@ impl<'a> X8664Generator<'a> {
     ) {
         let identifier: String = declaration.identifier.unwrap();
         let data_size: &str = declaration.data_size.as_str();
+        let data_type: Datatype = declaration.data_type;
         let declaration_value: Expr = *declaration.value;
         let mut not_generated: bool = true;
 
@@ -787,11 +773,11 @@ impl<'a> X8664Generator<'a> {
                         self.local_identifier
                             .insert(identifier.clone(), format!("{}_{}", parent, identifier));
                         format!(
-                            "\t{}_{} {} {}\n",
+                            "\t{}_{} {} 1, {}\n",
                             parent, identifier, directive, ident.symbol
                         )
                     } else {
-                        format!("\t{} {} {}\n", identifier, directive, ident.symbol)
+                        format!("\t{} {} 1, {}\n", identifier, directive, ident.symbol)
                     }
                 } else {
                     format!("")
@@ -803,12 +789,34 @@ impl<'a> X8664Generator<'a> {
                         .value
                         .parse()
                         .expect("Unable to parse numeric value");
+
+                    let integer = format!(
+                        "\t__INT_{}_PTR db {}\n",
+                        self.unitialized_integer_counter, value,
+                    );
+
+                    self.segments.data.push(integer);
+
                     if !parent.is_empty() {
                         self.local_identifier
                             .insert(identifier.clone(), format!("{}_{}", parent, identifier));
-                        format!("\t{}_{} {} {}\n", parent, identifier, directive, value)
+                        let assign = format!(
+                            "\t{}_{} {} 0, __INT_{}_PTR\n",
+                            parent, identifier, directive, self.unitialized_integer_counter
+                        );
+
+                        self.unitialized_integer_counter += 1;
+
+                        assign
                     } else {
-                        format!("\t{} {} {}\n", identifier, directive, value)
+                        let assign: String = format!(
+                            "\t{} {} 0, __INT_{}_PTR\n",
+                            identifier, directive, self.unitialized_integer_counter
+                        );
+
+                        self.unitialized_integer_counter += 1;
+
+                        assign
                     }
                 } else {
                     format!("")
@@ -819,15 +827,29 @@ impl<'a> X8664Generator<'a> {
                     if !parent.is_empty() {
                         self.local_identifier
                             .insert(identifier.clone(), format!("{}_{}", parent, identifier));
-                        format!(
-                            "\t{}_{} {} \"{}\", 0x0\n",
-                            parent, identifier, directive, str_lit.value
-                        )
+                        self.segments.data.push(format!(
+                            "\t__STR_PTR_{} db \"{}\", 0\n",
+                            self.string_pointer_counter, str_lit.value
+                        ));
+                        let string = format!(
+                            "\t{}_{} {} 2, __STR_PTR_{}\n",
+                            parent, identifier, directive, self.string_pointer_counter
+                        );
+                        self.string_pointer_counter += 1;
+                        string
                     } else {
-                        format!(
-                            "\t{} {} \"{}\", 0x0\n",
-                            identifier, directive, str_lit.value
-                        )
+                        self.segments.data.push(format!(
+                            "\t__STR_PTR_{} db \"{}\", 0\n",
+                            self.string_pointer_counter, str_lit.value
+                        ));
+                        let string = format!(
+                            "\t{} {} 2, __STR_PTR_{}\n",
+                            identifier, directive, self.string_pointer_counter
+                        );
+
+                        self.string_pointer_counter += 1;
+
+                        string
                     }
                 } else {
                     format!("")
@@ -839,12 +861,12 @@ impl<'a> X8664Generator<'a> {
                         self.local_identifier
                             .insert(identifier.clone(), format!("{}_{}", parent, identifier));
                         format!(
-                            "\t{}_{} {} \"{}\", 0x0\n",
+                            "\t{}_{} {} 3, \"{}\", 0\n",
                             parent, identifier, directive, boolean.value
                         )
                     } else {
                         format!(
-                            "\t{} {} \"{}\", 0x0\n",
+                            "\t{} {} 3, \"{}\", 0\n",
                             identifier, directive, boolean.value
                         )
                     }
@@ -857,25 +879,34 @@ impl<'a> X8664Generator<'a> {
                     self.local_identifier
                         .insert(identifier.clone(), format!("{}_{}", parent, identifier));
 
-                    format!("\t{}_{} {} 0\n", parent, identifier, directive)
+                    format!("\t{}_{} {} 4, 0\n", parent, identifier, directive)
                 } else {
-                    format!("\t{} db 0\n", identifier)
+                    format!("\t{} db 4, 0\n", identifier)
                 }
             }
             NodeType::BinaryExpr => {
+                let typ = match data_type {
+                    Datatype::Text => 2,
+                    _ => 0,
+                };
+
                 if !parent.is_empty() {
                     self.local_identifier
                         .insert(identifier.clone(), format!("{}_{}", parent, identifier));
                     self.segments.data.push(format!(
-                        "\t{}_{} {} 0\n",
+                        "\t{}_{} {} {}, 0\n",
                         parent,
                         identifier,
-                        directive.clone()
+                        directive.clone(),
+                        typ,
                     ));
                 } else {
-                    self.segments
-                        .data
-                        .push(format!("\t{} {} 0\n", identifier, directive.clone()));
+                    self.segments.data.push(format!(
+                        "\t{} {} {}, 0\n",
+                        identifier,
+                        directive.clone(),
+                        typ
+                    ));
                 }
                 let value_to_insert: (String, NodeType) =
                     (directive.clone(), declaration_value.clone().kind());
@@ -890,16 +921,24 @@ impl<'a> X8664Generator<'a> {
                     self.generate_call_expr(call, scope);
 
                     let return_size = self.get_return_size(&directive);
-                    scope.push(format!("\tmov [{}], {}\n", identifier, return_size));
+                    scope.push(format!("\tmov [{}+8], {}\n", identifier, return_size));
                     self.memory_access = true;
+
+                    let typ = match data_type {
+                        Datatype::Integer => "0",
+                        Datatype::Text => "2",
+                        Datatype::Boolean => "3",
+                        Datatype::Void => "4",
+                        _ => "1",
+                    };
 
                     if !parent.is_empty() {
                         self.local_identifier
                             .insert(identifier.clone(), format!("{}_{}", parent, identifier));
 
-                        format!("\t{}_{} {} 0x0\n", parent, identifier, &directive)
+                        format!("\t{}_{} {} {}, 0\n", parent, identifier, &directive, typ)
                     } else {
-                        format!("\t{} {} 0x0\n", identifier, &directive)
+                        format!("\t{} {} {}, 0\n", identifier, &directive, typ)
                     }
                 } else {
                     format!("")
@@ -926,7 +965,6 @@ impl<'a> X8664Generator<'a> {
         };
 
         if not_generated {
-            // mais ou menos quanto tempo até voce voltar? (responda no zap)
             self.segments.data.push(assembly_line);
             let value_to_insert: (String, NodeType) = (directive, declaration_value.clone().kind());
             self.identifier.insert(identifier.clone(), value_to_insert);
