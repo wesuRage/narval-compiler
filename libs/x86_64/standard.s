@@ -256,7 +256,7 @@ totxt:
     mov rsi, rsp            ; Set rsi to point to the top of the allocated space
     add rsi, 31             ; Move rsi to the end of the allocated space
     mov byte [rsi], 0       ; Initialize the last byte of the allocated space with 0 (null terminator)
-    dec rsi                 ; Move rsi one byte back to start writing the string
+    dec rsi               ; Move rsi one byte back to start writing the string
 
     mov rax, qword [rdi+8]  ; Move the integer pointer from rdi to rax
     mov r9b, 0              ; Initialize r9b to 0 (to be used later for the sign)
@@ -279,14 +279,14 @@ totxt:
     test rax, rax           ; Test if rax is 0 (check if all digits have been processed)
     jnz .totxt_loop         ; If rax is not 0, repeat the loop
 
-    add rsi, 1              ; Adjust rsi to the start of the string (moved forward by the number of digits)
+    add rsi, 2              ; Adjust rsi to the start of the string (moved forward by the number of digits)
     cmp r9b, 0              ; Compare r9b with 0 (check if the number was negative)
     je .totxt_positive      ; If r9b is 0, jump to the .positive label
     dec rsi                 ; Move rsi to the start of the string to place the sign
     mov [rsi], r9b          ; Store the sign at the correct position
 
 .totxt_positive:
-    dec rsi
+    sub rsi, 2
     mov byte [rsi], 0x2
     mov rax, rsi            ; Move the address of the start of the string to rax
     add rsp, 32             ; Restore the stack pointer (remove the allocated space)
