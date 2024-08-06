@@ -46,6 +46,14 @@ impl PartialEq for Datatype {
 
                 k1 == k2
             }
+            (a, Datatype::_Multitype(b)) => {
+                for t in b {
+                    if (**t) != *a {
+                        return false;
+                    }
+                }
+                true
+            }
             // Default case for inequality
             _ => false,
         }
@@ -207,7 +215,14 @@ impl Datatype {
             | (Datatype::Decimal, Datatype::Boolean)
             | (Datatype::Text, Datatype::Boolean)
             | (Datatype::Boolean, Datatype::Boolean) => Ok(other.clone()),
-
+            (Datatype::_Multitype(a), b) => {
+                for t in a {
+                    if **t == *b {
+                        return Ok(other.clone());
+                    }
+                }
+                Ok(self.clone())
+            }
             (Datatype::Void, _) | (Datatype::_NOTYPE, _) => {
                 Err(format!("Impossible to cast \"null values\" for void type."))
             }
