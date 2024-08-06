@@ -70,7 +70,7 @@ fn expand_and_canonicalize_path(filename: &str) -> String {
 fn main() {
     let cli: Cli = Cli::parse();
     let justcheck = cli.just_check;
-    //
+
     let filename: &String = &cli.run;
 
     // let filename: &String = &"./tests/main.nv".to_string();
@@ -89,12 +89,11 @@ fn main() {
 
     let namespace: &mut Vec<Namespace> = &mut vec![Namespace::new()];
     let mut checker: Checker = Checker::new(&ast, namespace, &source_code, &full_path);
-
     utilities(&mut checker);
 
     loop {
         for stmt in checker.current_body.2.clone() {
-            checker.check(stmt);
+            checker.check(&stmt);
         }
 
         if checker.bodies.len() == 1 {
@@ -106,6 +105,7 @@ fn main() {
     }
 
     let mut generator: Generator = Generator::new(&ast, &full_path, cli.arch);
+    // let mut generator: Generator = Generator::new(&ast, &full_path, "x86_64".to_string());
     generator.generate();
 
     let mut compiler: Compiler = Compiler::new(&full_path, cli.output);
