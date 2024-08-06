@@ -306,7 +306,7 @@ impl Parser {
 
                 let data_type: Datatype = self.parse_data_type(); // Analisa o tipo de dado
 
-                let stmt_expr = self.parse_var_declaration(
+                let stmt_expr: Expr = self.parse_var_declaration(
                     data_size.value,
                     data_type,
                     true,
@@ -1385,7 +1385,7 @@ impl Parser {
 
     // Método para analisar uma expressão de negação lógica
     fn parse_logical_not_expr(&mut self) -> Expr {
-        if self.at().token_type == TokenType::Exclamation {
+        if self.at().token_type == TokenType::Not {
             let mut column: (usize, usize) = self.at().column;
             let mut position: (usize, usize) = self.at().position;
             let lineno: usize = self.at().lineno;
@@ -2044,7 +2044,7 @@ impl Parser {
                     lineno,
                 })
             }
-            TokenType::Exclamation => {
+            TokenType::Not => {
                 self.eat(); // Consome o operador de negação lógica
                 let operand: Expr = self.parse_unary_expr(); // Analise a expressão unária seguinte
 
@@ -2166,7 +2166,7 @@ impl Parser {
         if self.at().token_type == TokenType::Minus
             || self.at().token_type == TokenType::Increment
             || self.at().token_type == TokenType::Decrement
-            || self.at().token_type == TokenType::Exclamation
+            || self.at().token_type == TokenType::Not
             || self.at().token_type == TokenType::BitwiseNot
             || self.next().token_type == TokenType::Increment
             || self.next().token_type == TokenType::Decrement
@@ -2664,7 +2664,7 @@ impl Parser {
             }
 
             self.expect(TokenType::CParen, "\")\" Expected."); // Espera um parêntese fechado
-            return expr; // Retorna a expressão analisada
+            expr // Retorna a expressão analisada
         } else {
             self.parse_essential_expr()
         }
