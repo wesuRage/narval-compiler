@@ -26,6 +26,9 @@ pub struct X8664Generator<'a> {
     pub local_identifier: HashMap<String, String>,
     pub function_parameter: HashMap<String, (String, &'a str)>,
     pub asm_parameters: Vec<&'a str>,
+    pub if_counter: usize,
+    pub if_consequent_counter: usize,
+    pub if_alternate_counter: usize,
 }
 
 #[derive(Clone)]
@@ -70,6 +73,9 @@ impl<'a> X8664Generator<'a> {
         let asm_parameters: Vec<&str> = vec![
             "rdi", "rsi", "rdx", "r10", "r8", "r9", "r11", "r12", "r13", "r14", "r15", "rcx", "rbx",
         ];
+        let if_counter: usize = 0;
+        let if_consequent_counter: usize = 0;
+        let if_alternate_counter: usize = 0;
 
         X8664Generator {
             program: tree,
@@ -90,6 +96,9 @@ impl<'a> X8664Generator<'a> {
             local_identifier,
             function_parameter,
             asm_parameters,
+            if_counter,
+            if_consequent_counter,
+            if_alternate_counter,
         }
     }
 
@@ -105,6 +114,7 @@ impl<'a> X8664Generator<'a> {
                     self.generate_function_declaration(*decl, &mut other, "".to_string());
                 }
                 Some(Expr::CallExpr(expr)) => self.generate_call_expr(expr, &mut main),
+                Some(Expr::IfStmt(s)) => self.generate_if_stmt(*s, &mut main),
                 _ => (),
             }
         }
@@ -433,7 +443,6 @@ impl<'a> X8664Generator<'a> {
             Expr::BinaryExpr(binary_expr) => {
                 let op = binary_expr.operator.as_str();
 
-                //vou fazer prioridade aq
                 if op == "**" {
                     self.generate_binary_exponential_expr(binary_expr, identifier, scope);
                 } else if op == "*" || op == "/" || op == "\\" || op == "%" {
@@ -1024,5 +1033,89 @@ impl<'a> X8664Generator<'a> {
 
     fn get_directive(&self, key: &str) -> Option<String> {
         self.identifier.get(key).map(|(s, _)| s.clone())
+    }
+
+    fn generate_test_expr(&mut self, expr: Expr, scope: &mut Vec<String>) {
+        match expr {
+            Expr::BinaryExpr(binary_expr) => {}
+            Expr::NumericLiteral(num) => {
+                let value: i32 = num.value.parse().ok().unwrap();
+                scope.push(format!("\tmov rax, {value}\n"));
+            }
+            Expr::Identifier(ident) => {}
+            Expr::StringLiteral(string) => {}
+            _ => {
+                panic!("Unsupported expression type");
+            }
+        }
+    }
+
+    fn generate_test(&mut self, test: Expr, scope: &mut Vec<String>) {
+        match test {
+            Expr::LogicalNotExpr(e) => {
+                self.generate_test(Expr::LogicalNotExpr(e), scope);
+            }
+            Expr::BinaryExpr(e) => {
+                let left = *e.left;
+                let right = *e.right;
+                let operator = &*e.operator;
+
+                match operator {
+                    "==" => {
+                        self.generate_test_expr(left, scope);
+                        scope.push("\tmov rbx, rax\n".to_string());
+                        self.generate_test_expr(right, scope);
+                        scope.push("\tcmp rax, rbx\n".to_string());
+                        scope.push(format!(
+                            "\tjne __if_{}_consequent_{}\n",
+                            self.if_counter, self.if_consequent_counter
+                        ));
+                        self.if_consequent_counter += 1;
+                    }
+                    _ => println!("Unsupported operator: {operator}"),
+                }
+            }
+            _ => println!("Expression not supported: {:?}", test),
+        }
+    }
+
+    fn generate_if_stmt(&mut self, stmt: IfStmt, scope: &mut Vec<String>) {
+        let test = *stmt.test;
+        let consequent: Vec<Stmt> = stmt.consequent;
+        let alternate: Option<Vec<Stmt>> = stmt.alternate;
+
+        scope.push(format!("__if_{}:\n", self.if_counter));
+
+        self.generate_test(test, scope);
+
+        for stmt in consequent {
+            match stmt.expr {
+                Some(Expr::VarDeclaration(decl)) => {
+                    self.generate_var_declaration(decl, scope, "".to_string());
+                }
+                Some(Expr::CallExpr(expr)) => self.generate_call_expr(expr, scope),
+                Some(Expr::IfStmt(s)) => self.generate_if_stmt(*s, scope),
+                _ => (),
+            }
+        }
+
+        if let Some(alt) = alternate {
+            scope.push(format!("__if_alternate_{}:\n", self.if_alternate_counter));
+            for stmt in alt {
+                match stmt.expr {
+                    Some(Expr::VarDeclaration(decl)) => {
+                        self.generate_var_declaration(decl, scope, "".to_string());
+                    }
+                    Some(Expr::CallExpr(expr)) => self.generate_call_expr(expr, scope),
+                    Some(Expr::IfStmt(s)) => self.generate_if_stmt(*s, scope),
+                    _ => (),
+                }
+            }
+            self.if_alternate_counter += 1;
+        }
+
+        scope.push(format!("__end_if_{}:\n", self.if_counter));
+
+        self.if_counter += 1;
     }
 }
