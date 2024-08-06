@@ -1,1 +1,7 @@
-
+qword num: integer = 3;
+qword numero: integer = ((((num + num) ** (1 + 1)) + 2) / 2);
+qword hashtag: text = "#" * numero;
+qword total: text = totxt(numero);
+write(hashtag);
+write("total:");
+write(total);
