@@ -38,7 +38,6 @@ pub enum TokenType {
     Enum,
     Eof,
     Equals,
-    Exclamation,
     Export,
     False,
     For,
@@ -57,11 +56,13 @@ pub enum TokenType {
     Loop,
     Minus,
     MinusEq,
+    Match,
     Mod,
     ModEq,
     Mov,
     Mul,
     MulEq,
+    Not,
     NotEquals,
     Null,
     Number,
@@ -97,7 +98,6 @@ pub enum TokenType {
     Unit,
     Var,
     Void,
-    When,
     While,
     Word,
     _Invalid,
@@ -136,7 +136,7 @@ impl TokenDefinitions {
         literals.insert("/=", TokenType::DivEq);
         literals.insert(".", TokenType::Dot);
         literals.insert("==", TokenType::Equals);
-        literals.insert("!", TokenType::Exclamation);
+        literals.insert("not", TokenType::Not);
         literals.insert(">", TokenType::GreaterThan);
         literals.insert(">=", TokenType::GreaterThanOrEqual);
         literals.insert("\\", TokenType::IntegerDiv);
@@ -149,7 +149,7 @@ impl TokenDefinitions {
         literals.insert("[", TokenType::OBracket);
         literals.insert("/*", TokenType::OComment);
         literals.insert("(", TokenType::OParen);
-        literals.insert("||", TokenType::Or);
+        literals.insert("or", TokenType::Or);
         literals.insert("+", TokenType::Plus);
         literals.insert("+=", TokenType::PlusEq);
         literals.insert("-", TokenType::Minus);
@@ -169,7 +169,7 @@ impl TokenDefinitions {
         literals.insert("<=", TokenType::LessThanOrEqual);
         literals.insert("**", TokenType::Power);
         literals.insert("**=", TokenType::PowerEq);
-        literals.insert("&&", TokenType::And);
+        literals.insert("and", TokenType::And);
 
         keywords.insert("Array", TokenType::Array);
         keywords.insert("as", TokenType::As);
@@ -192,6 +192,7 @@ impl TokenDefinitions {
         keywords.insert("integer", TokenType::Integer);
         keywords.insert("label", TokenType::Label);
         keywords.insert("loop", TokenType::Loop);
+        keywords.insert("match", TokenType::Match);
         keywords.insert("mov", TokenType::Mov);
         keywords.insert("null", TokenType::Null);
         keywords.insert("Object", TokenType::Object);
@@ -208,7 +209,6 @@ impl TokenDefinitions {
         keywords.insert("unit", TokenType::Unit);
         keywords.insert("var", TokenType::Var);
         keywords.insert("void", TokenType::Void);
-        keywords.insert("when", TokenType::When);
         keywords.insert("while", TokenType::While);
         keywords.insert("word", TokenType::Word);
 
