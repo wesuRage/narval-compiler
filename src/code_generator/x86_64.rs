@@ -27,8 +27,7 @@ pub struct X8664Generator<'a> {
     pub function_parameter: HashMap<String, (String, &'a str)>,
     pub asm_parameters: Vec<&'a str>,
     pub if_counter: usize,
-    pub if_consequent_counter: usize,
-    pub if_alternate_counter: usize,
+    pub while_counter: usize
 }
 
 #[derive(Clone)]
@@ -74,8 +73,8 @@ impl<'a> X8664Generator<'a> {
             "rdi", "rsi", "rdx", "r10", "r8", "r9", "r11", "r12", "r13", "r14", "r15", "rcx", "rbx",
         ];
         let if_counter: usize = 0;
-        let if_consequent_counter: usize = 0;
-        let if_alternate_counter: usize = 0;
+        let while_counter: usize = 0;
+        
 
         X8664Generator {
             program: tree,
@@ -97,8 +96,7 @@ impl<'a> X8664Generator<'a> {
             function_parameter,
             asm_parameters,
             if_counter,
-            if_consequent_counter,
-            if_alternate_counter,
+            while_counter
         }
     }
 
@@ -114,7 +112,8 @@ impl<'a> X8664Generator<'a> {
                     self.generate_function_declaration(*decl, &mut other, "".to_string());
                 }
                 Some(Expr::CallExpr(expr)) => self.generate_call_expr(expr, &mut main),
-                Some(Expr::IfStmt(s)) => self.generate_if_stmt(*s, &mut main),
+                Some(Expr::IfStmt(s)) => self.generate_if_stmt(*s, true, "".to_string(), &mut main),
+                Some(Expr::WhileStmt(w)) => self.generate_while_stmt(*w, &mut main),
                 _ => (),
             }
         }
@@ -314,6 +313,7 @@ impl<'a> X8664Generator<'a> {
                 //     self.generate_function_declaration(*decl, &mut scope, name.clone());
                 // }
                 Some(Expr::CallExpr(expr)) => self.generate_call_expr(expr, &mut new_scope),
+                Some(Expr::WhileStmt(w)) => self.generate_while_stmt(*w, &mut new_scope),
                 _ => (),
             }
             if !stmt.return_stmt.is_none() {
@@ -810,8 +810,8 @@ impl<'a> X8664Generator<'a> {
                         self.local_identifier
                             .insert(identifier.clone(), format!("{}_{}", parent, identifier));
                         let assign = format!(
-                            "\t{}_{} {} 0, __INT_{}_PTR\n",
-                            parent, identifier, directive, self.unitialized_integer_counter
+                            "\t{}_{} dq 0, __INT_{}_PTR\n",
+                            parent, identifier, self.unitialized_integer_counter
                         );
 
                         self.unitialized_integer_counter += 1;
@@ -819,8 +819,8 @@ impl<'a> X8664Generator<'a> {
                         assign
                     } else {
                         let assign: String = format!(
-                            "\t{} {} 0, __INT_{}_PTR\n",
-                            identifier, directive, self.unitialized_integer_counter
+                            "\t{} dq 0, __INT_{}_PTR\n",
+                            identifier, self.unitialized_integer_counter
                         );
 
                         self.unitialized_integer_counter += 1;
@@ -1042,7 +1042,10 @@ impl<'a> X8664Generator<'a> {
                 let value: i32 = num.value.parse().ok().unwrap();
                 scope.push(format!("\tmov rax, {value}\n"));
             }
-            Expr::Identifier(ident) => {}
+            Expr::Identifier(ident) => {
+                scope.push(format!("\tmov rax, [{}+8]\n", ident.symbol));
+                scope.push("\tmov rax, [rax]\n".to_string());
+            }
             Expr::StringLiteral(string) => {}
             _ => {
                 panic!("Unsupported expression type");
@@ -1050,72 +1053,144 @@ impl<'a> X8664Generator<'a> {
         }
     }
 
-    fn generate_test(&mut self, test: Expr, scope: &mut Vec<String>) {
+    fn generate_test(&mut self, test: Expr, scope: &mut Vec<String>) -> String {
         match test {
             Expr::LogicalNotExpr(e) => {
-                self.generate_test(Expr::LogicalNotExpr(e), scope);
+                return self.generate_test(Expr::LogicalNotExpr(e), scope);
             }
             Expr::BinaryExpr(e) => {
                 let left = *e.left;
                 let right = *e.right;
                 let operator = &*e.operator;
-
                 match operator {
                     "==" => {
                         self.generate_test_expr(left, scope);
                         scope.push("\tmov rbx, rax\n".to_string());
                         self.generate_test_expr(right, scope);
                         scope.push("\tcmp rax, rbx\n".to_string());
-                        scope.push(format!(
-                            "\tjne __if_{}_consequent_{}\n",
-                            self.if_counter, self.if_consequent_counter
-                        ));
-                        self.if_consequent_counter += 1;
+                        return "ne".to_string();
+                        
+                    },
+                    "!=" => {
+                        self.generate_test_expr(left, scope);
+                        scope.push("\tmov rbx, rax\n".to_string());
+                        self.generate_test_expr(right, scope);
+                        scope.push("\tcmp rax, rbx\n".to_string());
+                        return "e".to_string();
+                    },
+                    "<" => {
+                        self.generate_test_expr(left, scope);
+                        scope.push("\tmov rbx, rax\n".to_string());
+                        self.generate_test_expr(right, scope);
+                        scope.push("\txchg rax, rbx\n".to_string());
+                        scope.push("\tcmp rax, rbx\n".to_string());
+                        return "g".to_string();
+                    },
+                    ">" => {
+                        self.generate_test_expr(left, scope);
+                        scope.push("\tmov rbx, rax\n".to_string());
+                        self.generate_test_expr(right, scope);
+                        scope.push("\tcmp rax, rbx\n".to_string());
+                        return "l".to_string();
                     }
                     _ => println!("Unsupported operator: {operator}"),
                 }
             }
             _ => println!("Expression not supported: {:?}", test),
         }
+        return "".to_string();
     }
 
-    fn generate_if_stmt(&mut self, stmt: IfStmt, scope: &mut Vec<String>) {
+    fn generate_if_stmt(&mut self, stmt: IfStmt, hasend: bool, label: String, scope: &mut Vec<String>) {
         let test = *stmt.test;
-        let consequent: Vec<Stmt> = stmt.consequent;
-        let alternate: Option<Vec<Stmt>> = stmt.alternate;
+        let consequent = stmt.consequent;
+        let alternate = stmt.alternate;
 
-        scope.push(format!("__if_{}:\n", self.if_counter));
-
-        self.generate_test(test, scope);
-
-        for stmt in consequent {
-            match stmt.expr {
-                Some(Expr::VarDeclaration(decl)) => {
-                    self.generate_var_declaration(decl, scope, "".to_string());
-                }
-                Some(Expr::CallExpr(expr)) => self.generate_call_expr(expr, scope),
-                Some(Expr::IfStmt(s)) => self.generate_if_stmt(*s, scope),
-                _ => (),
-            }
-        }
-
-        if let Some(alt) = alternate {
-            scope.push(format!("__if_alternate_{}:\n", self.if_alternate_counter));
-            for stmt in alt {
-                match stmt.expr {
-                    Some(Expr::VarDeclaration(decl)) => {
-                        self.generate_var_declaration(decl, scope, "".to_string());
-                    }
-                    Some(Expr::CallExpr(expr)) => self.generate_call_expr(expr, scope),
-                    Some(Expr::IfStmt(s)) => self.generate_if_stmt(*s, scope),
-                    _ => (),
-                }
-            }
-            self.if_alternate_counter += 1;
-        }
-
-        scope.push(format!("__end_if_{}:\n", self.if_counter));
-
+        let op = self.generate_test(test, scope);
+        let label_consequent = format!("__flow.if_alternate_{}", self.if_counter);
+        let label_end: String = if hasend {
+        format!("__flow.if_end_{}", self.if_counter)
+        } else {
+            label
+        };
+        
+        let mut hasret: bool = false;
         self.if_counter += 1;
+
+        scope.push(format!("\tj{} {}\n", op, label_consequent));
+        for s in consequent {
+            
+            match s.expr {
+                Some(Expr::VarDeclaration(v)) => self.generate_var_declaration(v, scope, "".to_string()),
+                Some(Expr::CallExpr(c)) => self.generate_call_expr(c, scope),
+                Some(Expr::FunctionDeclaration(f)) => self.generate_function_declaration(*f, scope, "".to_string()),
+                Some(Expr::IfStmt(s)) => {
+                    let mut _value = self.generate_if_stmt(*s, true, label_end.clone(), scope);
+                },
+                _ => ()
+            }
+            hasret = s.return_stmt.is_some();
+            if hasret {
+            self.generate_return_stmt(s.return_stmt, "auto".to_string(), scope);
+            }
+        }
+        if !hasret && hasend {
+            scope.push(format!("\tjmp {}\n", label_end.as_str()));
+        }
+        scope.push(format!("{}:\n", label_consequent));
+        
+        if let Some(alt) = alternate {
+            for s in alt {
+            
+                match s.expr {
+                    Some(Expr::VarDeclaration(v)) => self.generate_var_declaration(v, scope, "".to_string()),
+                    Some(Expr::CallExpr(c)) => self.generate_call_expr(c, scope),
+                    //Some(Expr::FunctionDeclaration(f)) => self.generate_function_declaration(*f, scope, "".to_string()),
+                    Some(Expr::IfStmt(s)) => self.generate_if_stmt(*s, true, label_end.clone(), scope),
+                    _ => ()
+                }
+                if s.return_stmt.is_some() {
+                    self.generate_return_stmt(s.return_stmt, "auto".to_string(), scope)
+                }
+                
+            }
+        }
+
+        if !hasret && hasend {
+            scope.push(format!("{}:\n", label_end.as_str()));
+        }
+
+
+
+    }
+
+    fn generate_while_stmt(&mut self, stmt: WhileStmt, scope: &mut Vec<String>) {
+        let test = stmt.condition;
+        let body = stmt.body;
+        let label = format!("__flow.while_{}", self.while_counter);
+        let label_exit = format!("__flow.while_{}_end", self.while_counter);
+        scope.push(format!("{}:\n", label.as_str()));
+        let op = self.generate_test(test, scope);
+        scope.push(format!("\tj{} {}\n", op, label_exit.as_str()));
+        self.while_counter += 1;
+
+        for s in body {
+            match s.expr {
+                Some(Expr::VarDeclaration(v)) => self.generate_var_declaration(v, scope, "".to_string()),
+                    Some(Expr::CallExpr(c)) => self.generate_call_expr(c, scope),
+                    //Some(Expr::FunctionDeclaration(f)) => self.generate_function_declaration(*f, scope, "".to_string()),
+                    Some(Expr::IfStmt(si)) => self.generate_if_stmt(*si, false, "".to_string(), scope),
+                    Some(Expr::WhileStmt(w)) => self.generate_while_stmt(*w, scope),
+                    Some(Expr::BreakExpr(_)) => scope.push(format!("\tjmp {}\n", label_exit.as_str())),
+                    _ => ()
+            }
+
+            if s.return_stmt.is_some() {
+                self.generate_return_stmt(s.return_stmt, "auto".to_string(), scope)
+            }
+        }
+
+        scope.push(format!("\tjmp {}\n", label.as_str()));
+        scope.push(format!("{}:\n", label_exit.as_str()))
     }
 }
