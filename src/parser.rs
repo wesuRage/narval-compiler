@@ -906,11 +906,9 @@ impl Parser {
 
         self.eat(); // consome o token de for
 
-        // Espera o token de "(" para o início dos itens
         let mut items: Vec<String> = Vec::new();
 
-        // Enquanto não for end of file ou "}", faz o parsing de statements
-        while self.at().token_type != TokenType::Eof && self.at().token_type != TokenType::Colon {
+        while self.at().token_type != TokenType::Eof && self.at().token_type != TokenType::In {
             items.push(
                 self.expect(TokenType::Identifier, "Identifier Expected.")
                     .value,
@@ -922,7 +920,7 @@ impl Parser {
             }
         }
 
-        self.expect(TokenType::Colon, "\":\" Expected.");
+        self.expect(TokenType::In, "\"in\" Expected.");
 
         let seq: Expr = self.parse_range_expr();
 
