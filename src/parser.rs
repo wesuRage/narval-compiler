@@ -1249,9 +1249,12 @@ impl Parser {
         while self.not_eof()
             && (self.at().token_type == TokenType::Else || self.at().token_type == TokenType::Elif)
         {
+            let mut is_else_if: bool = false;
+            if self.at().token_type == TokenType::Else && self.next().token_type == TokenType::If  {
             self.eat();
-
-            if self.at().token_type == TokenType::If || self.at().token_type == TokenType::Elif {
+            is_else_if = true;
+            }
+            if is_else_if || self.at().token_type == TokenType::Elif {
                 alternate = Some(vec![self.parse_if_stmt()]);
                 break;
             } else {
