@@ -81,8 +81,8 @@ pub struct Checker<'a> {
     pub namespace: &'a mut Namespace,
     pub current_namespace_index: usize,
     pub lines: Option<Vec<String>>,
-    pub nodes: Vec<Expr>,
-    pub current_node: Option<Expr>,
+    pub in_loop: bool
+
 }
 
 type Dt = Option<Datatype>;
@@ -109,8 +109,7 @@ impl<'a> Checker<'a> {
             namespace: &mut namespacearr[0],
             current_namespace_index: 0,
             lines: Some(source_code.split('\n').map(String::from).collect()),
-            nodes: Vec::new(),
-            current_node: None,
+            in_loop: false
         }
     }
 
@@ -169,10 +168,16 @@ impl<'a> Checker<'a> {
                 Some(Expr::FunctionDeclaration(ref decl)) => self.check_label(decl),
                 Some(Expr::_EOL(_)) => self.finalize_label(),
                 Some(Expr::IfStmt(ref stmt)) => self.check_if(stmt),
+                Some(Expr::WhileStmt(ref stmt)) => self.check_while(stmt),
                 Some(Expr::CallExpr(ref expr)) => self.check_call(expr),
                 Some(Expr::Enum(ref enm)) => self.check_enum(enm),
                 Some(Expr::AsmStmt(ref stmt)) => self.check_asmpiece(stmt),
-                Some(Expr::MemberExpr(ref expr)) => self.check_member(expr),
+                Some(Expr::BreakExpr(ref b)) => {
+                    if !self.in_loop {
+                        self.error(&Expr::BreakExpr(b.clone()), "Attempting to use break in a non-loop context.");
+                    }
+                    return Some(Void);
+                }
                 _ => Some(Void),
             }
         }
@@ -720,16 +725,21 @@ impl<'a> Checker<'a> {
         Some(Void)
     }
 
-    fn check_member(&mut self, expr: &MemberExpr) -> Dt {
-        let objt: Option<Datatype> = self.check(&self.expr2stmt(*expr.clone().object));
-        if let Some(Object(_)) = objt {
-        } else {
-            self.error(
-                &*expr.clone().object,
-                "Attempting to use property-access in a non-object value.",
-            );
+     fn check_while(&mut self, stat: &WhileStmt) -> Dt {
+        let dt = self.check(&self.expr2stmt(stat.condition.clone()));
+        let isboolean: bool = dt.clone().is_some() && (dt.clone().unwrap() == Boolean);
+        if !isboolean {
+            self.error(&stat.condition, format!("Expected boolean expression here, but found a expression of type \"{}\"", dt.unwrap()).as_str());
         }
 
-        None
+        self.in_loop = true;
+
+        for s in &stat.body {
+            self.check(&s);
+        }
+
+        self.in_loop = false;
+
+        Some(Void)
     }
 }
