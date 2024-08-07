@@ -68,12 +68,12 @@ fn expand_and_canonicalize_path(filename: &str) -> String {
 }
 
 fn main() {
-    let cli: Cli = Cli::parse();
-    let justcheck = cli.just_check;
+    // let cli: Cli = Cli::parse();
+    // let justcheck = cli.just_check;
 
-    let filename: &String = &cli.run;
+    // let filename: &String = &cli.run;
 
-    // let filename: &String = &"./tests/main.nv".to_string();
+    let filename: &String = &"./main.nv".to_string();
 
     let full_path: String = expand_and_canonicalize_path(filename);
 
@@ -100,14 +100,14 @@ fn main() {
             break;
         }
     }
-    if justcheck == 1 {
-        return;
-    }
+    // if justcheck == 1 {
+    //     return;
+    // }
 
-    let mut generator: Generator = Generator::new(&ast, &full_path, cli.arch);
-    // let mut generator: Generator = Generator::new(&ast, &full_path, "x86_64".to_string());
+    // let mut generator: Generator = Generator::new(&ast, &full_path, cli.arch);
+    let mut generator: Generator = Generator::new(&ast, &full_path, "x86_64".to_string());
     generator.generate();
 
-    let mut compiler: Compiler = Compiler::new(&full_path, cli.output);
-    compiler.compile();
+    // let mut compiler: Compiler = Compiler::new(&full_path, cli.output);
+    // compiler.compile();
 }
