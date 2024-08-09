@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::colors::printc;
 use crate::datatype::*;
+use std::borrow::{Borrow, BorrowMut};
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
@@ -12,7 +13,6 @@ pub struct X8664Generator<'a> {
     pub filename: &'a String,
     pub segments: Segments,
     pub assembly: String,
-    pub max_local_directive: &'a str,
     pub identifier: HashMap<String, (String, NodeType)>,
     pub strings: HashMap<String, (String, Option<String>)>,
     pub unitialized_strings_counter: usize,
@@ -26,9 +26,12 @@ pub struct X8664Generator<'a> {
     pub local_identifier: HashMap<String, String>,
     pub function_parameter: HashMap<String, (String, &'a str)>,
     pub asm_parameters: Vec<&'a str>,
-    pub if_counter: usize,
-    pub if_consequent_counter: usize,
-    pub if_alternate_counter: usize,
+    pub for_counter: usize,
+    pub for_iterators: HashMap<String, String>,
+    pub for_range_is_string: bool,
+    pub for_range_is_ascii: bool,
+    pub for_iterable_string: String,
+    pub for_pointer_counter: usize,
 }
 
 #[derive(Clone)]
@@ -56,49 +59,33 @@ impl<'a> X8664Generator<'a> {
             code_other: vec![],
         };
 
-        let assembly: String = String::new();
-        let max_local_directive: &str = "db";
-        let identifier: HashMap<String, (String, NodeType)> = HashMap::new();
-        let strings: HashMap<String, (String, Option<String>)> = HashMap::new();
-        let unitialized_strings_counter: usize = 0;
-        let unitialized_integer_counter: usize = 0;
-        let temp_return_counter: usize = 0;
-        let string_pointer_counter: usize = 0;
-        let integer_pointer_counter: usize = 0;
-        let memory_access: bool = false;
-        let current_string: Option<String> = None;
-        let current_int: i32 = 0;
-        let local_identifier: HashMap<String, String> = HashMap::new();
-        let function_parameter: HashMap<String, (String, &'a str)> = HashMap::new();
-        let asm_parameters: Vec<&str> = vec![
-            "rdi", "rsi", "rdx", "r10", "r8", "r9", "r11", "r12", "r13", "r14", "r15", "rcx", "rbx",
-        ];
-        let if_counter: usize = 0;
-        let if_consequent_counter: usize = 0;
-        let if_alternate_counter: usize = 0;
-
         X8664Generator {
             program: tree,
             filename,
             segments,
-            assembly,
-            max_local_directive,
-            identifier,
-            strings,
-            unitialized_strings_counter,
-            unitialized_integer_counter,
-            temp_return_counter,
-            string_pointer_counter,
-            integer_pointer_counter,
-            memory_access,
-            current_string,
-            current_int,
-            local_identifier,
-            function_parameter,
-            asm_parameters,
-            if_counter,
-            if_consequent_counter,
-            if_alternate_counter,
+            assembly: String::new(),
+            identifier: HashMap::new(),
+            strings: HashMap::new(),
+            unitialized_strings_counter: 0,
+            unitialized_integer_counter: 0,
+            temp_return_counter: 0,
+            string_pointer_counter: 0,
+            integer_pointer_counter: 0,
+            memory_access: false,
+            current_string: None,
+            current_int: 0,
+            local_identifier: HashMap::new(),
+            function_parameter: HashMap::new(),
+            asm_parameters: vec![
+                "rdi", "rsi", "rdx", "r10", "r8", "r9", "r11", "r12", "r13", "r14", "r15", "rcx",
+                "rbx",
+            ],
+            for_counter: 0,
+            for_iterators: HashMap::new(),
+            for_range_is_string: false,
+            for_range_is_ascii: false,
+            for_iterable_string: "".to_string(),
+            for_pointer_counter: 0,
         }
     }
 
@@ -114,7 +101,7 @@ impl<'a> X8664Generator<'a> {
                     self.generate_function_declaration(*decl, &mut other, "".to_string());
                 }
                 Some(Expr::CallExpr(expr)) => self.generate_call_expr(expr, &mut main),
-                Some(Expr::IfStmt(s)) => self.generate_if_stmt(*s, &mut main),
+                Some(Expr::ForStmt(s)) => self.generate_for_stmt(s, &mut main),
                 _ => (),
             }
         }
@@ -146,7 +133,6 @@ impl<'a> X8664Generator<'a> {
         }
         self.assembly.push_str("\tmov rdi, 0\n");
         self.assembly.push_str("\tcall exit\n");
-        self.assembly.push_str("\n");
 
         for code in &other {
             self.assembly.push_str(code);
@@ -381,15 +367,74 @@ impl<'a> X8664Generator<'a> {
                         )));
                         self.unitialized_integer_counter += 1;
                     }
-                    Expr::Identifier(ref id) => {
+                    Expr::Identifier(ref expr_identifer) => {
                         if self.memory_access {
-                            let directive = self.identifier.get(&id.symbol).map(|(v, _)| v.clone());
+                            let directive: Option<String> = self
+                                .identifier
+                                .get(&expr_identifer.symbol)
+                                .map(|(v, _)| v.clone());
                             let size = self.return_inverse_constant_directive_size(
-                                directive.as_deref().unwrap(),
+                                directive.as_deref().unwrap_or("qword"),
                             );
-                            arg_stack.push(CallerType::Id(format!("{} {}", size, id.symbol)))
+                            let raw_pointers: Option<&String> =
+                                self.strings.get(&expr_identifer.symbol).map(|(v, _)| v);
+
+                            if let Some(ptr) = raw_pointers {
+                                arg_stack.push(CallerType::Id(format!("{} {}", size, ptr)))
+                            } else {
+                                if let Some(ident) = Some(expr_identifer.symbol.clone()) {
+                                    if let Some(_) = self.identifier.get(&ident) {
+                                        self.memory_access = true;
+
+                                        let param: Option<&&str> = self
+                                            .function_parameter
+                                            .get(&ident)
+                                            .map(|(_, stack)| stack);
+
+                                        if let Some(parameter) = param {
+                                            arg_stack.push(CallerType::Id(format!("{}", parameter)))
+                                        } else {
+                                            let local =
+                                                self.local_identifier.get(&ident).map(|id| id);
+                                            if let Some(id) = local {
+                                                arg_stack.push(CallerType::Id(format!("{}", id)))
+                                            } else {
+                                                arg_stack.push(CallerType::Id(format!("{}", ident)))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         } else {
-                            arg_stack.push(CallerType::Id(id.symbol.clone()));
+                            let raw_pointers =
+                                self.strings.get(&expr_identifer.symbol).map(|(v, _)| v);
+
+                            if let Some(reg) = raw_pointers {
+                                arg_stack.push(CallerType::Id(format!("{}", reg)))
+                            } else {
+                                if let Some(ident) = Some(expr_identifer.symbol.clone()) {
+                                    if let Some(_) = self.identifier.get(&ident) {
+                                        self.memory_access = true;
+
+                                        let param: Option<&&str> = self
+                                            .function_parameter
+                                            .get(&ident)
+                                            .map(|(_, stack)| stack);
+
+                                        if let Some(parameter) = param {
+                                            arg_stack.push(CallerType::Id(format!("{}", parameter)))
+                                        } else {
+                                            let local =
+                                                self.local_identifier.get(&ident).map(|id| id);
+                                            if let Some(id) = local {
+                                                arg_stack.push(CallerType::Id(format!("{}", id)))
+                                            } else {
+                                                arg_stack.push(CallerType::Id(format!("{}", ident)))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                     Expr::CallExpr(ref call_expr) => {
@@ -453,6 +498,11 @@ impl<'a> X8664Generator<'a> {
                     self.generate_binary_bitshift_expr(binary_expr, identifier, scope);
                 }
             }
+            Expr::UnaryMinusExpr(e) => {
+                let expr = *e.operand;
+                self.generate_expr(expr, None, scope);
+                scope.push("\tneg rax\n".to_string())
+            }
             Expr::NumericLiteral(num) => {
                 scope.push(format!("\tmov rax, {}\n", num.value));
                 self.current_int = num.value.parse().ok().unwrap();
@@ -489,18 +539,29 @@ impl<'a> X8664Generator<'a> {
                 }
             }
             Expr::StringLiteral(string) => {
-                let string = format!(
-                    "\t__STR_{}_PTR db \"{}\", 0\n\t__STR_{} dq 2, __STR_{}_PTR\n",
-                    self.unitialized_strings_counter,
-                    string.value,
-                    self.unitialized_strings_counter,
-                    self.unitialized_strings_counter
-                );
+                if let Some(id) = identifier {
+                    if id.as_str() == ".range" {
+                        let raw_value = string.value.chars();
+                        for ascii in raw_value {
+                            scope.push(format!("\tmov rax, {}\n", ascii as u8));
+                        }
+                        self.for_range_is_string = false;
+                        self.for_range_is_ascii = true;
+                    }
+                } else {
+                    let string = format!(
+                        "\t__STR_{}_PTR db \"{}\", 0\n\t__STR_{} dq 2, __STR_{}_PTR\n",
+                        self.unitialized_strings_counter,
+                        string.value,
+                        self.unitialized_strings_counter,
+                        self.unitialized_strings_counter
+                    );
 
-                self.segments.data.push(string);
-                self.current_string =
-                    Some(format!("[__STR_{}+8]", self.unitialized_strings_counter));
-                self.unitialized_strings_counter += 1;
+                    self.segments.data.push(string);
+                    self.current_string =
+                        Some(format!("[__STR_{}+8]", self.unitialized_strings_counter));
+                    self.unitialized_strings_counter += 1;
+                }
             }
             _ => {
                 panic!("Unsupported expression type");
@@ -929,8 +990,38 @@ impl<'a> X8664Generator<'a> {
                 if let Expr::CallExpr(call) = declaration_value.clone() {
                     self.generate_call_expr(call, scope);
 
-                    let return_size = self.get_return_size(&directive);
-                    scope.push(format!("\tmov [{}+8], {}\n", identifier, return_size));
+                    if !parent.is_empty() {
+                        self.local_identifier
+                            .insert(identifier.clone(), format!("{}_{}", parent, identifier));
+                    }
+
+                    let mut new_id = &identifier;
+                    let mut formatted = String::new();
+                    let cloned = self.local_identifier.clone();
+                    {
+                        new_id = {
+                            if let Some(id) = self.strings.get(&identifier).map(|(name, _)| name) {
+                                id
+                            } else if let Some(id) =
+                                self.identifier.get(&identifier).map(|(name, _)| name)
+                            {
+                                id
+                            } else if let Some(id) = cloned.get(&identifier) {
+                                id
+                            } else if let Some(id) = self
+                                .function_parameter
+                                .get(&identifier)
+                                .map(|(name, _)| name)
+                            {
+                                id
+                            } else {
+                                &identifier
+                            }
+                        };
+                    }
+
+                    scope.push(format!("\tmov [{}+8], rax\n", new_id));
+
                     self.memory_access = true;
 
                     let typ = match data_type {
@@ -941,14 +1032,11 @@ impl<'a> X8664Generator<'a> {
                         _ => "1",
                     };
 
-                    if !parent.is_empty() {
-                        self.local_identifier
-                            .insert(identifier.clone(), format!("{}_{}", parent, identifier));
+                    self.segments
+                        .data
+                        .push(format!("\t{} dq {}, 0\n", new_id, typ));
 
-                        format!("\t{}_{} {} {}, 0\n", parent, identifier, &directive, typ)
-                    } else {
-                        format!("\t{} {} {}, 0\n", identifier, &directive, typ)
-                    }
+                    formatted
                 } else {
                     format!("")
                 }
@@ -1031,91 +1119,158 @@ impl<'a> X8664Generator<'a> {
         }
     }
 
-    fn get_directive(&self, key: &str) -> Option<String> {
+    fn get_directive(&mut self, key: &str) -> Option<String> {
         self.identifier.get(key).map(|(s, _)| s.clone())
     }
 
-    fn generate_test_expr(&mut self, expr: Expr, scope: &mut Vec<String>) {
-        match expr {
-            Expr::BinaryExpr(binary_expr) => {}
-            Expr::NumericLiteral(num) => {
-                let value: i32 = num.value.parse().ok().unwrap();
+    fn generate_for_sequence(&mut self, sequence: Expr, scope: &mut Vec<String>) {
+        match sequence {
+            Expr::StringLiteral(s) => {
+                let string: String = format!(
+                    "\t__STR_{}_PTR db \"{}\", 0\n\t__STR_{} dq 2, __STR_{}_PTR\n",
+                    self.unitialized_strings_counter,
+                    s.value,
+                    self.unitialized_strings_counter,
+                    self.unitialized_strings_counter
+                );
+
+                self.segments.data.push(string);
+                scope.push(format!(
+                    "\tmov rdi, __STR_{}\n",
+                    self.unitialized_strings_counter
+                ));
+                self.for_iterable_string = format!("__STR_{}", self.unitialized_strings_counter);
+
+                scope.push("\tcall len\n".to_string());
+                scope.push(format!("\txor rcx, rcx\n"));
+                self.unitialized_strings_counter += 1;
+                self.for_range_is_string = true;
+                self.for_range_is_ascii = false;
+            }
+            Expr::NumericLiteral(e) => {
+                let value: String = e.value;
                 scope.push(format!("\tmov rax, {value}\n"));
+                scope.push(format!("\txor rcx, rcx\n"));
+                self.for_range_is_string = false;
+                self.for_range_is_ascii = false;
             }
-            Expr::Identifier(ident) => {}
-            Expr::StringLiteral(string) => {}
-            _ => {
-                panic!("Unsupported expression type");
-            }
-        }
-    }
+            Expr::RangeExpr(r) => {
+                let start: Expr = r.start;
+                let range: &str = r.range.as_str();
+                let end: Expr = r.end;
 
-    fn generate_test(&mut self, test: Expr, scope: &mut Vec<String>) {
-        match test {
-            Expr::LogicalNotExpr(e) => {
-                self.generate_test(Expr::LogicalNotExpr(e), scope);
-            }
-            Expr::BinaryExpr(e) => {
-                let left = *e.left;
-                let right = *e.right;
-                let operator = &*e.operator;
+                self.generate_expr(start, Some(".range".to_string()), scope);
+                scope.push("\tmov rcx, rax\n".to_string());
+                self.generate_expr(end, Some(".range".to_string()), scope);
 
-                match operator {
-                    "==" => {
-                        self.generate_test_expr(left, scope);
-                        scope.push("\tmov rbx, rax\n".to_string());
-                        self.generate_test_expr(right, scope);
-                        scope.push("\tcmp rax, rbx\n".to_string());
-                        scope.push(format!(
-                            "\tjne __if_{}_consequent_{}\n",
-                            self.if_counter, self.if_consequent_counter
-                        ));
-                        self.if_consequent_counter += 1;
-                    }
-                    _ => println!("Unsupported operator: {operator}"),
+                if range == "..=" {
+                    scope.push("\tinc rax\n".to_string())
                 }
             }
-            _ => println!("Expression not supported: {:?}", test),
+            _ => println!("Expression not supported on sequence: {:?}", sequence),
         }
     }
 
-    fn generate_if_stmt(&mut self, stmt: IfStmt, scope: &mut Vec<String>) {
-        let test = *stmt.test;
-        let consequent: Vec<Stmt> = stmt.consequent;
-        let alternate: Option<Vec<Stmt>> = stmt.alternate;
+    fn generate_for_stmt(&mut self, stmt: ForStmt, scope: &mut Vec<String>) {
+        let items: Vec<String> = stmt.items;
+        let sequence: Expr = *stmt.sequence;
+        let body: Vec<Stmt> = stmt.body;
+        let current_for: usize = self.for_counter;
+        scope.push(format!("__flow.for_{}:\n", current_for));
 
-        scope.push(format!("__if_{}:\n", self.if_counter));
+        if items.len() == 1 {
+            self.strings.insert(
+                items[0].clone(),
+                (format!("__for_pointer_{}", self.for_pointer_counter), None),
+            );
+            self.generate_for_sequence(sequence, scope);
+        }
 
-        self.generate_test(test, scope);
+        scope.push(format!("__flow.for_{}_loop:\n", current_for));
+        scope.push("\tcmp rcx, rax\n".to_string());
+        scope.push(format!("\tje __flow.for_{}_end\n", current_for));
+        scope.push("\tpush rcx\n".to_string());
+        scope.push("\tpush rax\n".to_string());
 
-        for stmt in consequent {
+        if self.for_range_is_ascii {
+            self.segments.data.push(format!(
+                "\t__for_pointer_{} dq 0, 0, 0\n",
+                self.for_pointer_counter
+            ));
+            scope.push(format!(
+                "\tmov qword [__for_pointer_{}], 0x2\n",
+                self.for_pointer_counter
+            ));
+            scope.push(format!(
+                "\tmov qword [__for_pointer_{}+8], rcx\n",
+                self.for_pointer_counter
+            ));
+            scope.push(format!(
+                "\tmov qword [__for_pointer_{}+16], 0x0\n",
+                self.for_pointer_counter
+            ));
+            self.for_pointer_counter += 1;
+        } else if self.for_range_is_string {
+            self.segments.data.push(format!(
+                "__for_pointer_{} dq 0, 0, 0",
+                self.for_pointer_counter
+            ));
+            scope.push(format!(
+                "\tmov qword [__for_pointer_{}], 0x2\n",
+                self.for_pointer_counter
+            ));
+            scope.push(format!("\tmov rdx, [{}+8]\n", self.for_iterable_string));
+            scope.push("\tmovzx rdx, byte [rdx+rcx]\n".to_string());
+            scope.push(format!(
+                "\tmov qword [__for_pointer_{}+8], rdx\n",
+                self.for_pointer_counter
+            ));
+            scope.push(format!(
+                "\tmov qword [__for_pointer_{}+16], 0x0\n",
+                self.for_pointer_counter
+            ));
+
+            self.for_pointer_counter += 1;
+        } else {
+            self.segments.data.push(format!(
+                "\t__for_pointer_{} dq 0, 0\n",
+                self.for_pointer_counter
+            ));
+            scope.push(format!(
+                "\tmov qword [__for_pointer_{}+8], rcx\n",
+                self.for_pointer_counter
+            ));
+
+            self.for_pointer_counter += 1;
+        }
+
+        scope.push("\n".to_string());
+
+        for stmt in body {
             match stmt.expr {
                 Some(Expr::VarDeclaration(decl)) => {
-                    self.generate_var_declaration(decl, scope, "".to_string());
+                    self.generate_var_declaration(
+                        decl,
+                        scope,
+                        format!("__for_{}", self.for_counter),
+                    );
                 }
                 Some(Expr::CallExpr(expr)) => self.generate_call_expr(expr, scope),
-                Some(Expr::IfStmt(s)) => self.generate_if_stmt(*s, scope),
+
+                Some(Expr::ForStmt(s)) => {
+                    self.for_counter += 1;
+                    self.generate_for_stmt(s, scope)
+                }
                 _ => (),
             }
         }
 
-        if let Some(alt) = alternate {
-            scope.push(format!("__if_alternate_{}:\n", self.if_alternate_counter));
-            for stmt in alt {
-                match stmt.expr {
-                    Some(Expr::VarDeclaration(decl)) => {
-                        self.generate_var_declaration(decl, scope, "".to_string());
-                    }
-                    Some(Expr::CallExpr(expr)) => self.generate_call_expr(expr, scope),
-                    Some(Expr::IfStmt(s)) => self.generate_if_stmt(*s, scope),
-                    _ => (),
-                }
-            }
-            self.if_alternate_counter += 1;
-        }
-
-        scope.push(format!("__end_if_{}:\n", self.if_counter));
-
-        self.if_counter += 1;
+        scope.push("\n".to_string());
+        scope.push("\tpop rax\n".to_string());
+        scope.push("\tpop rcx\n".to_string());
+        scope.push("\tinc rcx\n".to_string());
+        scope.push(format!("\tjmp __flow.for_{}_loop\n", current_for));
+        scope.push(format!("__flow.for_{}_end:\n", current_for));
+        self.for_counter += 1;
     }
 }
