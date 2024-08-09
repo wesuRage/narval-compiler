@@ -1,4 +1,6 @@
-for i in 0..=9 {
-  qword number: text = totxt(i);
-  write(number);
+for i in 0..=5 {
+  if i == 2 {
+    break;
+  }
+  write("oh great goddess");
 }
