@@ -81,8 +81,7 @@ pub struct Checker<'a> {
     pub namespace: &'a mut Namespace,
     pub current_namespace_index: usize,
     pub lines: Option<Vec<String>>,
-    pub nodes: Vec<Expr>,
-    pub current_node: Option<Expr>,
+    in_loop: bool,
 }
 
 type Dt = Option<Datatype>;
@@ -109,8 +108,7 @@ impl<'a> Checker<'a> {
             namespace: &mut namespacearr[0],
             current_namespace_index: 0,
             lines: Some(source_code.split('\n').map(String::from).collect()),
-            nodes: Vec::new(),
-            current_node: None,
+            in_loop: false,
         }
     }
 
@@ -172,7 +170,7 @@ impl<'a> Checker<'a> {
                 Some(Expr::CallExpr(ref expr)) => self.check_call(expr),
                 Some(Expr::Enum(ref enm)) => self.check_enum(enm),
                 Some(Expr::AsmStmt(ref stmt)) => self.check_asmpiece(stmt),
-                Some(Expr::MemberExpr(ref expr)) => self.check_member(expr),
+                Some(Expr::WhileStmt(ref w)) => self.check_while(&*w),
                 _ => Some(Void),
             }
         }
@@ -720,16 +718,28 @@ impl<'a> Checker<'a> {
         Some(Void)
     }
 
-    fn check_member(&mut self, expr: &MemberExpr) -> Dt {
-        let objt: Option<Datatype> = self.check(&self.expr2stmt(*expr.clone().object));
-        if let Some(Object(_)) = objt {
-        } else {
+    fn check_while(&mut self, stat: &WhileStmt) -> Dt {
+        let dt = self.check(&self.expr2stmt(stat.condition.clone()));
+        let isboolean: bool = dt.clone().is_some() && (dt.clone().unwrap() == Boolean);
+        if !isboolean {
             self.error(
-                &*expr.clone().object,
-                "Attempting to use property-access in a non-object value.",
+                &stat.condition,
+                format!(
+                    "Expected boolean expression here, but found a expression of type \"{}\"",
+                    dt.unwrap()
+                )
+                .as_str(),
             );
         }
 
-        None
+        self.in_loop = true;
+
+        for s in &stat.body {
+            self.check(&s);
+        }
+
+        self.in_loop = false;
+
+        Some(Void)
     }
 }
