@@ -2,10 +2,12 @@ include "./linux.s"
 
 segment readable writeable
     __WRITE_TYPE_ERROR_STR_PTR db 0x1B, "[31m", "TypeError:", 0x1B, "[33m", " Attempt of writing a non Text value.", 0x1B, "[0m", 0x0
+    __LEN_TYPE_ERROR_STR_PTR db 0x1B, "[31m", "TypeError:", 0x1B, "[33m", " Attempt of mesuring length of a non Text/Array/List value.", 0x1B, "[0m", 0x0
     __TOTXT_ERR_TEXT_STR_PTR db 0x1B, "[31m", "TypeError:", 0x1B, "[33m", " Can't convert Text into Text.", 0x1B, "[0m", 0x0
     __TOTXT_ERR_UNKNOWN_STR_PTR db 0x1B, "[31m", "TypeError:", 0x1B, "[33m", " Unknown value set to conversion.", 0x1B, "[0m", 0x0
 
     __WRITE_TYPE_ERROR dq 2, __WRITE_TYPE_ERROR_STR_PTR
+    __LEN_TYPE_ERROR dq 2, __LEN_TYPE_ERROR_STR_PTR
     __TOTXT_ERR_TEXT dq 2, __TOTXT_ERR_TEXT_STR_PTR
     __TOTXT_ERR_UNKNOWN dq 2, __TOTXT_ERR_UNKNOWN_STR_PTR
 
@@ -105,9 +107,7 @@ read:
     push rbx
     push rcx
 
-    mov rbx, rdi
     mov rcx, rsi
-    mov rdi, rbx
     call len
 
     mov rdx, rax
@@ -165,10 +165,25 @@ write:
     mov rbx, rdi
     cmp byte [rbx], 2
     jne .write_error
-    mov rdi, qword [rbx+8]
+    mov rdi, rbx
     call len                     ; Uses the value of rdi as first argument to calculate the length
+
+    cmp qword [rbx+8], 0x400000  ; Checks if is a pointer
+    ja .write_pointer
     
-    mov rsi, qword [rbx+8]     ; Uses the saved value of the string in rsi
+.write_char:
+    mov dl, byte [rbx+8]                 ; If not, puts a character in dl
+    mov byte [__TEMP_STRING_BUFFER], dl  ; Moves to a temporary string this character
+    mov byte [__TEMP_STRING_BUFFER+1], 0 ; Adds a null terminator
+    mov rsi, __TEMP_STRING_BUFFER        ; Puts the temporary string as argument to be printed
+    mov rdi, STD_OUT                     ; To the standard output
+    mov rdx, 2                           ; Length of 2 bytes
+    mov rax, SYS_write                   ; Syscall of write
+    syscall
+
+    jmp .write_end                       ; Adds a line break and returns
+.write_pointer:
+    mov rsi, qword [rbx+8]       ; Uses the saved value of the string in rsi
     mov rdi, STD_OUT             ; Moves the file descriptor to rdi
     mov rdx, rax                 ; Uses the return value of the function len as the size
     mov rax, SYS_write           ; Syscall of write
@@ -180,11 +195,8 @@ write:
     mov rdi, __WRITE_TYPE_ERROR
     call write
     
-    pop rbx
-    pop rsi
-    pop rdx
-    
-    ret
+    mov rdi, 1
+    call exit
 
 .write_end:
     mov rax, SYS_write           ; Syscall of write
@@ -194,9 +206,9 @@ write:
     syscall
 
     ; Restores the saved registers
-    pop rbx
-    pop rsi
     pop rdx
+    pop rsi
+    pop rbx
     
     ret
 
@@ -206,12 +218,19 @@ write:
 ; output: rax (integer)
 len:
     push rbx            ; Saves rbx
-
-    mov rbx, rdi        ; Moves the first argument to rbx
-    xor rax, rax        ; Makes rax be equals to zero
+    cmp qword [rdi+8], 0x400000
+    ja .is_pointer  ; If is a pointer
+    mov rbx, rdi    ; If is not a pointer
+    jmp .len_start  ; Then starts counting
+.is_pointer:
+    mov rbx, qword [rdi+8]
+    mov rdi, qword [rdi+8]
+    jmp .len_start
+.len_start:
+    xor rax, rax        ; Clear rax
 .next_char:
     mov al, byte [rdi]  ; Moves the current byte of rdi to al
-    cmp al, 0           ; Compares this byte with zero
+    cmp al, 0           ; Compares this byte with zero ; mano, to achando que essa verificação is pointer
     je .done            ; If it's zero, it's done
     inc rdi             ; Increments in rdi
     jmp .next_char      ; Restars the loop
@@ -233,23 +252,25 @@ totxt:
     push rsi
     push r9
 
-    cmp byte [rdi], 2 ; compara o primeiro byte de rdi com 2 (flag text)
-    je .totxt_err_text ; if is text, raise an error
-    cmp byte [rdi], 0  ; flag integer
-    jne .totxt_err_unknown
-    jmp .totxt_start ; else, starts the conversion
+    cmp byte [rdi], 2        ; Checks if string
+    je .totxt_err_text       ; If is string, raise an error
+    cmp byte [rdi], 0        ; Checks if integer
+    jne .totxt_err_unknown   ; If not integer, raise an error
+    jmp .totxt_start         ; Else, starts the conversion
 
 .totxt_err_unknown:
-    mov rdi, __TOTXT_ERR_UNKNOWN ; moves the error message to
+    mov rdi, __TOTXT_ERR_UNKNOWN
     call write
     
-    jmp .totxt_end
+    mov rdi, 1
+    call exit
 
 .totxt_err_text:
-    mov rdi, __TOTXT_ERR_TEXT ; moves the error message to rdi (write label buffer argument)
-        call write ; obvious
+    mov rdi, __TOTXT_ERR_TEXT
+    call write 
     
-    jmp .totxt_end
+    mov rdi, 1
+    call exit
 
 .totxt_start:
     sub rsp, 32             ; Allocate 32 bytes on the stack for temporary use
@@ -365,11 +386,11 @@ toint:
 ; args sequence: rdi (text: text), rsi (pref: text)
 ; output: rax (boolean)
 starts_with:
-    ; Saves the following registers:
+    ; Saves the rbx, rcx, r10 and rdx:
     push rbx
     push rcx
-    push r10
     push rdx
+    push r10
 
     mov rbx, rdi            ; Sets the first argument (text) in rbx
     mov rcx, rsi            ; Sets the second argument (prefix) in rcx
@@ -407,9 +428,9 @@ starts_with:
     mov rax, 1              ; Sets the return as true (1)
 .end_totxt:
     ; Restores the saved registers
-    pop rbx
-    pop rcx
     pop r10
     pop rdx
+    pop rcx
+    pop rbx
 
     ret
