@@ -32,6 +32,8 @@ pub struct X8664Generator<'a> {
     pub for_range_is_ascii: bool,
     pub for_iterable_string: String,
     pub for_pointer_counter: usize,
+    pub if_counter: usize,
+    pub while_counter: usize,
 }
 
 #[derive(Clone)]
@@ -86,6 +88,8 @@ impl<'a> X8664Generator<'a> {
             for_range_is_ascii: false,
             for_iterable_string: "".to_string(),
             for_pointer_counter: 0,
+            if_counter: 0,
+            while_counter: 0,
         }
     }
 
@@ -102,6 +106,10 @@ impl<'a> X8664Generator<'a> {
                 }
                 Some(Expr::CallExpr(expr)) => self.generate_call_expr(expr, &mut main),
                 Some(Expr::ForStmt(s)) => self.generate_for_stmt(s, &mut main),
+                Some(Expr::IfStmt(s)) => {
+                    self.generate_if_stmt(*s, true, "".to_string(), &mut main, "".to_string())
+                }
+                Some(Expr::WhileStmt(w)) => self.generate_while_stmt(*w, &mut main),
                 _ => (),
             }
         }
@@ -300,6 +308,11 @@ impl<'a> X8664Generator<'a> {
                 //     self.generate_function_declaration(*decl, &mut scope, name.clone());
                 // }
                 Some(Expr::CallExpr(expr)) => self.generate_call_expr(expr, &mut new_scope),
+                Some(Expr::ForStmt(s)) => self.generate_for_stmt(s, &mut new_scope),
+                Some(Expr::IfStmt(s)) => {
+                    self.generate_if_stmt(*s, true, "".to_string(), &mut new_scope, "".to_string())
+                }
+                Some(Expr::WhileStmt(w)) => self.generate_while_stmt(*w, &mut new_scope),
                 _ => (),
             }
             if !stmt.return_stmt.is_none() {
@@ -351,12 +364,9 @@ impl<'a> X8664Generator<'a> {
                             .parse()
                             .expect("Unable to parse numeric literal.");
 
-                        let integer = format!(
-                            "\t__INT_{}_PTR db {}\n\t__INT_{} db 0, __INT_{}_PTR\n",
-                            self.unitialized_integer_counter,
-                            value,
-                            self.unitialized_integer_counter,
-                            self.unitialized_integer_counter
+                        let integer: String = format!(
+                            "\t__INT_{} dq 0, {}\n",
+                            self.unitialized_integer_counter, value,
                         );
 
                         self.segments.data.push(integer);
@@ -607,7 +617,7 @@ impl<'a> X8664Generator<'a> {
                 if let Some(parameter) = param {
                     scope.push(format!("\tmov {}, rax\n", parameter))
                 } else {
-                    let local = self.local_identifier.get(&ident).map(|id| id);
+                    let local: Option<&String> = self.local_identifier.get(&ident).map(|id| id);
                     if let Some(id) = local {
                         scope.push(format!("\tmov [{}+8], rax\n", id))
                     } else {
@@ -860,29 +870,18 @@ impl<'a> X8664Generator<'a> {
                         .parse()
                         .expect("Unable to parse numeric value");
 
-                    let integer = format!(
-                        "\t__INT_{}_PTR db {}\n",
-                        self.unitialized_integer_counter, value,
-                    );
-
-                    self.segments.data.push(integer);
-
                     if !parent.is_empty() {
                         self.local_identifier
                             .insert(identifier.clone(), format!("{}_{}", parent, identifier));
-                        let assign = format!(
-                            "\t{}_{} {} 0, __INT_{}_PTR\n",
-                            parent, identifier, directive, self.unitialized_integer_counter
-                        );
+                        let assign: String =
+                            format!("\t{}_{} {} 0, {}\n", parent, identifier, directive, value);
 
                         self.unitialized_integer_counter += 1;
 
                         assign
                     } else {
-                        let assign: String = format!(
-                            "\t{} {} 0, __INT_{}_PTR\n",
-                            identifier, directive, self.unitialized_integer_counter
-                        );
+                        let assign: String =
+                            format!("\t{} {} 0, {}\n", identifier, directive, value);
 
                         self.unitialized_integer_counter += 1;
 
@@ -1261,6 +1260,17 @@ impl<'a> X8664Generator<'a> {
                     self.for_counter += 1;
                     self.generate_for_stmt(s, scope)
                 }
+                Some(Expr::BreakExpr(_)) => {
+                    scope.push(format!("\tjmp __flow.for_{}_end:\n", current_for))
+                } //
+                Some(Expr::IfStmt(s)) => self.generate_if_stmt(
+                    *s,
+                    true,
+                    "".to_string(),
+                    scope,
+                    format!("__flow.for_{}_end", current_for),
+                ),
+                Some(Expr::WhileStmt(w)) => self.generate_while_stmt(*w, scope),
                 _ => (),
             }
         }
@@ -1272,5 +1282,230 @@ impl<'a> X8664Generator<'a> {
         scope.push(format!("\tjmp __flow.for_{}_loop\n", current_for));
         scope.push(format!("__flow.for_{}_end:\n", current_for));
         self.for_counter += 1;
+    }
+
+    fn search_symbol(&self, symbol: &String) -> String {
+        if let Some(s) = self.strings.get(symbol.as_str()).map(|(name, _)| name) {
+            s.to_owned()
+        } else if let Some(s) = self.identifier.get(symbol.as_str()).map(|(name, _)| name) {
+            s.to_owned()
+        } else if let Some(s) = self
+            .function_parameter
+            .get(symbol.as_str())
+            .map(|(name, _)| name)
+        {
+            s.to_owned()
+        } else if let Some(s) = self.local_identifier.get(symbol.as_str()) {
+            s.to_owned()
+        } else {
+            symbol.to_string()
+        }
+    }
+    fn generate_test_expr(&mut self, expr: Expr, scope: &mut Vec<String>) {
+        match expr {
+            Expr::BinaryExpr(binary_expr) => {}
+            Expr::NumericLiteral(num) => {
+                let value: i32 = num.value.parse().ok().unwrap();
+                scope.push(format!("\tmov rax, {value}\n"));
+            }
+            Expr::Identifier(ident) => {
+                scope.push(format!(
+                    "\tmov rax, [{}+8]\n",
+                    self.search_symbol(&ident.symbol)
+                ));
+            }
+            Expr::StringLiteral(string) => {
+                scope.push(format!("\tmov rax, [{}+8]\n", string.value));
+                scope.push("\tmov rax, [rax]\n".to_string());
+            }
+            _ => {
+                panic!("Unsupported expression type");
+            }
+        }
+    }
+
+    fn generate_test(&mut self, test: Expr, scope: &mut Vec<String>) -> String {
+        match test {
+            Expr::LogicalNotExpr(e) => {
+                return self.generate_test(Expr::LogicalNotExpr(e), scope);
+            }
+            Expr::BinaryExpr(e) => {
+                let left = *e.left;
+                let right = *e.right;
+                let operator = &*e.operator;
+                match operator {
+                    "==" => {
+                        self.generate_test_expr(left, scope);
+                        scope.push("\tmov rbx, rax\n".to_string());
+                        self.generate_test_expr(right, scope);
+                        scope.push("\tcmp rax, rbx\n".to_string());
+                        return "ne".to_string();
+                    }
+                    "!=" => {
+                        self.generate_test_expr(left, scope);
+                        scope.push("\tmov rbx, rax\n".to_string());
+                        self.generate_test_expr(right, scope);
+                        scope.push("\tcmp rax, rbx\n".to_string());
+                        return "e".to_string();
+                    }
+                    "<" => {
+                        self.generate_test_expr(left, scope);
+                        scope.push("\tmov rbx, rax\n".to_string());
+                        self.generate_test_expr(right, scope);
+                        scope.push("\txchg rax, rbx\n".to_string());
+                        scope.push("\tcmp rax, rbx\n".to_string());
+                        return "g".to_string();
+                    }
+                    ">" => {
+                        self.generate_test_expr(left, scope);
+                        scope.push("\tmov rbx, rax\n".to_string());
+                        self.generate_test_expr(right, scope);
+                        scope.push("\tcmp rax, rbx\n".to_string());
+                        return "l".to_string();
+                    }
+                    _ => println!("Unsupported operator: {operator}"),
+                }
+            }
+            _ => println!("Expression not supported: {:?}", test),
+        }
+        return "".to_string();
+    }
+
+    fn generate_if_stmt(
+        &mut self,
+        stmt: IfStmt,
+        hasend: bool,
+        label: String,
+        scope: &mut Vec<String>,
+        breakable: String,
+    ) {
+        let test = *stmt.test;
+        let consequent = stmt.consequent;
+        let alternate = stmt.alternate;
+
+        let op = self.generate_test(test, scope);
+        let label_consequent = format!("__flow.if_alternate_{}", self.if_counter);
+        let label_end: String = if hasend {
+            format!("__flow.if_end_{}", self.if_counter)
+        } else {
+            label
+        };
+
+        let mut hasret: bool = false;
+        self.if_counter += 1;
+
+        scope.push(format!("\tj{} {}\n", op, label_consequent));
+        for s in consequent {
+            match s.expr {
+                Some(Expr::VarDeclaration(v)) => {
+                    self.generate_var_declaration(v, scope, "".to_string())
+                }
+                Some(Expr::CallExpr(c)) => self.generate_call_expr(c, scope),
+                Some(Expr::FunctionDeclaration(f)) => {
+                    self.generate_function_declaration(*f, scope, "".to_string())
+                }
+                Some(Expr::IfStmt(s)) => {
+                    let mut _value = self.generate_if_stmt(
+                        *s,
+                        true,
+                        label_end.clone(),
+                        scope,
+                        breakable.clone(),
+                    );
+                }
+                Some(Expr::ForStmt(s)) => {
+                    self.for_counter += 1;
+                    self.generate_for_stmt(s, scope)
+                }
+                Some(Expr::BreakExpr(_)) => scope.push(format!("\tjmp {breakable}\n")),
+                Some(Expr::WhileStmt(w)) => self.generate_while_stmt(*w, scope),
+                _ => (),
+            }
+            hasret = s.return_stmt.is_some();
+            if hasret {
+                self.generate_return_stmt(s.return_stmt, "auto".to_string(), scope);
+            }
+        }
+        if !hasret && hasend {
+            scope.push(format!("\tjmp {}\n", label_end.as_str()));
+        }
+        scope.push(format!("{}:\n", label_consequent));
+
+        if let Some(alt) = alternate {
+            for s in alt {
+                match s.expr {
+                    Some(Expr::VarDeclaration(v)) => {
+                        self.generate_var_declaration(v, scope, "".to_string())
+                    }
+                    Some(Expr::CallExpr(c)) => self.generate_call_expr(c, scope),
+                    Some(Expr::IfStmt(s)) => {
+                        self.generate_if_stmt(*s, true, label_end.clone(), scope, breakable.clone())
+                    }
+                    Some(Expr::ForStmt(s)) => {
+                        self.for_counter += 1;
+                        self.generate_for_stmt(s, scope)
+                    }
+                    Some(Expr::BreakExpr(_)) => scope.push(format!("\tjmp {breakable}\n")),
+                    Some(Expr::WhileStmt(w)) => self.generate_while_stmt(*w, scope),
+                    _ => (),
+                }
+                if s.return_stmt.is_some() {
+                    self.generate_return_stmt(s.return_stmt, "auto".to_string(), scope)
+                }
+            }
+        }
+
+        if !hasret && hasend {
+            scope.push(format!("{}:\n", label_end.as_str()));
+        }
+    }
+
+    fn generate_while_stmt(&mut self, stmt: WhileStmt, scope: &mut Vec<String>) {
+        let test = stmt.condition;
+        let body = stmt.body;
+        let label = format!("__flow.while_{}", self.while_counter);
+        let label_exit = format!("__flow.while_{}_end", self.while_counter);
+        scope.push(format!("{}:\n", label.as_str()));
+        if let Expr::BooleanLiteral(ref b) = test {
+            if b.value == "false" {
+                let op = self.generate_test(test, scope);
+                scope.push(format!("\tj{} {}\n", op, label_exit.as_str()));
+            }
+        } else {
+            let op = self.generate_test(test, scope);
+            scope.push(format!("\tj{} {}\n", op, label_exit.as_str()));
+        }
+        self.while_counter += 1;
+
+        for s in body {
+            match s.expr {
+                Some(Expr::VarDeclaration(v)) => {
+                    self.generate_var_declaration(v, scope, format!("{}", label))
+                }
+                Some(Expr::CallExpr(c)) => self.generate_call_expr(c, scope),
+                //Some(Expr::FunctionDeclaration(f)) => self.generate_function_declaration(*f, scope, "".to_string()),
+                Some(Expr::IfStmt(si)) => self.generate_if_stmt(
+                    *si,
+                    false,
+                    "".to_string(),
+                    scope,
+                    format!("{}", label_exit),
+                ),
+                Some(Expr::WhileStmt(w)) => self.generate_while_stmt(*w, scope),
+                Some(Expr::BreakExpr(_)) => scope.push(format!("\tjmp {}\n", label_exit)),
+                Some(Expr::ForStmt(s)) => {
+                    self.for_counter += 1;
+                    self.generate_for_stmt(s, scope)
+                }
+                _ => (),
+            }
+
+            if s.return_stmt.is_some() {
+                self.generate_return_stmt(s.return_stmt, "auto".to_string(), scope)
+            }
+        }
+
+        scope.push(format!("\tjmp {}\n", label.as_str()));
+        scope.push(format!("{}:\n", label_exit.as_str()))
     }
 }
