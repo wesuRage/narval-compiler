@@ -140,7 +140,6 @@ impl<'a> Checker<'a> {
                 if let Some(fdt) = self.current_body.1.clone() {
                     if fdt != Void {
                         self.error_wdata(
-                            //voltei
                             (ret.position, ret.column, ret.lineno),
                             "Expected no value here, but found one value.",
                         );
@@ -170,7 +169,9 @@ impl<'a> Checker<'a> {
                 Some(Expr::CallExpr(ref expr)) => self.check_call(expr),
                 Some(Expr::Enum(ref enm)) => self.check_enum(enm),
                 Some(Expr::AsmStmt(ref stmt)) => self.check_asmpiece(stmt),
-                Some(Expr::WhileStmt(ref w)) => self.check_while(&*w),
+                Some(Expr::WhileStmt(ref stmt)) => self.check_while(&*stmt),
+                Some(Expr::ForStmt(ref stmt)) => self.check_for(stmt),
+                Some(Expr::RangeExpr(ref expr)) => self.check_range(&*expr),
                 _ => Some(Void),
             }
         }
@@ -733,13 +734,100 @@ impl<'a> Checker<'a> {
         }
 
         self.in_loop = true;
+        self.pushns();
 
         for s in &stat.body {
             self.check(&s);
         }
 
+        self.popns();
+
         self.in_loop = false;
 
         Some(Void)
+    }
+
+    fn check_for(&mut self, stmt: &ForStmt) -> Dt {
+        let itemsl = stmt.items.len();
+        let mut valuet: Vec<Datatype> = Vec::new();
+        if let Expr::RangeExpr(ref r) = *stmt.sequence {
+            let seq = self.check(&self.expr2stmt(Expr::RangeExpr(r.clone())));
+            if itemsl > 1 {
+                self.error(
+                    &Expr::RangeExpr(r.clone()),
+                    "Expected a single value to be served for a range expression",
+                );
+            }
+            valuet.push(seq.unwrap());
+        } else {
+            let dt = self.check(&self.expr2stmt(*stmt.clone().sequence));
+            match dt {
+                Some(Array(t)) | Some(Tuple(t)) => {
+                    if let Tuple(t1) = *t {
+                        if let _Multitype(l) = *t1 {
+                            if !(l.len() == 1 || l.len() == itemsl) {
+                                self.error(&*stmt.sequence, "The number of items doesn't correspond to the number of iterators");
+                            }
+                            valuet.extend((*l).iter().map(|e| *e.clone()));
+                        } else {
+                            valuet.push(*t1);
+                        }
+                    } else {
+                        valuet.push(*t);
+                    }
+                }
+                Some(Text) => {
+                    valuet.push(Text);
+                } //ja volto okay PUTA QUE PARIU bota Somwe void o final
+                _ => {
+                    self.error(
+                        &*stmt.sequence,
+                        format!("Expected a iterable value like Text, Array<T> or Tuple<T> (syntax (a, b, c, ...))")
+                        .as_str(),
+                    );
+                }
+            }
+        }
+
+        self.pushns();
+        for i in 0..itemsl {
+            self.newvar(stmt.items[i].clone(), Some(valuet[i].clone()), true);
+        }
+
+        self.in_loop = true;
+
+        for s in &stmt.body {
+            self.check(&s);
+            if !self.in_loop {
+                self.in_loop = true;
+            }
+        }
+
+        self.in_loop = false;
+        self.popns();
+
+        return Some(Void);
+    }
+
+    unsafe fn check_range(&mut self, expr: &RangeExpr) -> Dt {
+        let lt = self.check(&self.expr2stmt(expr.clone().end));
+        let rt = self.check(&self.expr2stmt(expr.clone().end));
+        return match (lt.clone(), rt) {
+            (Some(Integer), Some(Integer)) => lt,
+            (Some(Text), Some(Text)) => lt,
+            (l, r) => {
+                self.error(
+                    &Expr::RangeExpr(Box::new(expr.clone())),
+                    format!(
+                        "Expected Integer or Text for range types, but found {}{}{}.",
+                        l.unwrap(),
+                        expr.range,
+                        r.unwrap()
+                    )
+                    .as_str(),
+                );
+                Some(Void)
+            } // kkkkkkkkkkkkkkkk
+        }; //que odio, ja dei milagre antes da g
     }
 }
