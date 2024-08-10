@@ -56,7 +56,7 @@ impl Parser {
     fn parse_data_type(&mut self) -> Datatype {
         // Match para determinar o tipo de token atual
         let data_type: Datatype = match self.at().token_type {
-            // Se o token atual for Void, Text, Integer, Decimal ou Bool
+            // Se o token atual for Void, Text, Integer, Decimal, Bool Object, Array ou Tuple
             TokenType::Void => {
                 self.eat();
                 Datatype::Void
