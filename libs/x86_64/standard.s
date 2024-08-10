@@ -78,10 +78,9 @@ clear:
     ret
 ;--------------------------------------------------
 ; Nanosleep 
-; args sequence: rdi (time: tuple(seconds: integer, nanoseconds: integer))
+; args sequence: rdi (time: tuple[seconds: integer, nanoseconds: integer])
 ; output: rax (integer)
 nanosleep:
-
     mov rax, SYS_nanosleep
     xor rsi, rsi
     syscall
@@ -117,8 +116,8 @@ read:
     syscall
 
     ; Restores rbx and rcx
-    pop rbx
     pop rcx
+    pop rbx
 
     ret
 
@@ -163,12 +162,11 @@ write:
     push rdx
 
     mov rbx, rdi
-    cmp byte [rbx], 2
+    cmp byte [rbx], 2                    ; Compares if string
     jne .write_error
-    mov rdi, rbx
-    call len                     ; Uses the value of rdi as first argument to calculate the length
+    call len                             ; Uses the value of rdi as first argument to calculate the length
 
-    cmp qword [rbx+8], 0x400000  ; Checks if is a pointer
+    cmp qword [rbx+8], 0x400000          ; Checks if is a pointer
     ja .write_pointer
     
 .write_char:
@@ -278,7 +276,6 @@ totxt:
     add rsi, 31             ; Move rsi to the end of the allocated space
     mov byte [rsi], 0       ; Initialize the last byte of the allocated space with 0 (null terminator)
     dec rsi                 ; Move rsi one byte back to start writing the string
-
     mov rax, qword [rdi+8]  ; Move the integer pointer from rdi to rax
     mov r9b, 0              ; Initialize r9b to 0 (to be used later for the sign)
     cmp rax, 0              ; Compare the number with 0
@@ -307,9 +304,17 @@ totxt:
     mov [rsi], r9b          ; Store the sign at the correct position
 
 .totxt_positive:
-    dec rsi
-    mov byte [rsi], 0x2
-    mov rax, rsi            ; Move the address of the start of the string to rax
+    cmp r15, 1              ; Checks r15's flag to return as needed
+    je .totxt_return_as_ptr
+
+    mov rax, rsi           ; Move the address of the start of the string to rax
+    add rsp, 32             ; Restore the stack pointer (remove the allocated space)
+    mov r15, 0
+    jmp .totxt_end
+.totxt_return_as_ptr:
+    mov qword [__TEMP_STRING_BUFFER], 0x2
+    mov qword [__TEMP_STRING_BUFFER+8], rsi
+    mov rax, __TEMP_STRING_BUFFER           ; Move the address of the start of the string to rax
     add rsp, 32             ; Restore the stack pointer (remove the allocated space)
 
 .totxt_end:
