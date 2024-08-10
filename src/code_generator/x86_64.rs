@@ -448,7 +448,10 @@ impl<'a> X8664Generator<'a> {
                         }
                     }
                     Expr::CallExpr(ref call_expr) => {
+                        scope.push("\tpush r15\n".to_string());
+                        scope.push("\tmov r15, 1\n".to_string());
                         self.generate_call_expr(call_expr.clone(), scope);
+                        scope.push("\tpop r15\n".to_string());
 
                         arg_stack.push(CallerType::Id("rax".to_string()));
                     }
@@ -987,7 +990,10 @@ impl<'a> X8664Generator<'a> {
             }
             NodeType::CallExpr => {
                 if let Expr::CallExpr(call) = declaration_value.clone() {
+                    scope.push("\tpush r15\n".to_string());
+                    scope.push("\tmov r15, 0\n".to_string());
                     self.generate_call_expr(call, scope);
+                    scope.push("\tpop r15\n".to_string());
 
                     if !parent.is_empty() {
                         self.local_identifier
