@@ -251,11 +251,7 @@ impl Parser {
                 let mut _size: Option<String> = Some("1".to_string());
                 // Se houver colchetes, obtém o tamanho especificado
                 if self.at().token_type == TokenType::OBracket {
-                    _size = Some(format!(
-                        "{}[{}]",
-                        data_size,
-                        self.expect(TokenType::Number, "Integer Expected.").value
-                    ));
+                    _size = Some(format!("{}[{}]", data_size, self.eat().value));
                     self.expect(TokenType::CBracket, "\"]\" Expected.");
                 }
                 let identifer: Option<String> = Some(self.eat().value);
