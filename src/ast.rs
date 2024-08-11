@@ -29,9 +29,9 @@ pub enum NodeType {
 
     VarDeclaration,
     FunctionDeclaration,
-    UnitDeclaration,
-    UnitVarDeclaration,
-    UnitFunctionDeclaration,
+    ClassDeclaration,
+    ClassVarDeclaration,
+    ClassFunctionDeclaration,
 
     AssignmentExpr,
     BinaryExpr,
@@ -76,9 +76,9 @@ pub enum Expr {
 
     VarDeclaration(VarDeclaration),
     FunctionDeclaration(Box<FunctionDeclaration>),
-    UnitDeclaration(Box<UnitDeclaration>),
-    UnitVarDeclaration(Box<UnitVarDeclaration>),
-    UnitFunctionDeclaration(Box<UnitFunctionDeclaration>),
+    ClassDeclaration(Box<ClassDeclaration>),
+    ClassVarDeclaration(Box<ClassVarDeclaration>),
+    ClassFunctionDeclaration(Box<ClassFunctionDeclaration>),
 
     AssignmentExpr(AssignmentExpr),
     BinaryExpr(BinaryExpr),
@@ -144,95 +144,92 @@ impl PartialEq for Expr {
     }
 }
 
-// Implementação de métodos para a enumeração Expr
 impl Expr {
-    // Método que retorna o tipo do nó da árvore de sintaxe abstrata (AST)
     pub fn kind(&self) -> NodeType {
-        // O match é usado para verificar o tipo de expressão e retornar o tipo correspondente
         match self {
-            Expr::ArrayAccess(_) => NodeType::ArrayAccess, // Se for um array access
-            Expr::ArrayExpr(_) => NodeType::ArrayExpr,     // Se for um array
-            Expr::AsmStmt(_) => NodeType::AsmStmt,         // Se for um statement de assembly
-            Expr::AssignmentExpr(_) => NodeType::AssignmentExpr, // Se for uma expressão de atribuição
-            Expr::BinaryExpr(_) => NodeType::BinaryExpr,         // Se for uma expressão binária
-            Expr::BlockExpr(_) => NodeType::BlockExpr,           // Se for uma expressão de bloco
-            Expr::BooleanLiteral(_) => NodeType::BooleanLiteral, // Se for uma expressão booleana
-            Expr::BreakExpr(_) => NodeType::BreakExpr,           // Se for um break
-            Expr::CallExpr(_) => NodeType::CallExpr,             // Se for uma chamada de função
+            Expr::ArrayAccess(_) => NodeType::ArrayAccess,
+            Expr::ArrayExpr(_) => NodeType::ArrayExpr,
+            Expr::AsmStmt(_) => NodeType::AsmStmt,
+            Expr::AssignmentExpr(_) => NodeType::AssignmentExpr,
+            Expr::BinaryExpr(_) => NodeType::BinaryExpr,
+            Expr::BlockExpr(_) => NodeType::BlockExpr,
+            Expr::BooleanLiteral(_) => NodeType::BooleanLiteral,
+            Expr::BreakExpr(_) => NodeType::BreakExpr,
+            Expr::CallExpr(_) => NodeType::CallExpr,
             Expr::ContinueExpr(_) => NodeType::ContinueExpr,
-            Expr::Enum(_) => NodeType::Enum, // Se for um enum
-            Expr::ExportStmt(_) => NodeType::ExportStmt, // Se for uma declaração de exportação
-            Expr::ForStmt(_) => NodeType::ForStmt, // Se for um for statement
-            Expr::FunctionDeclaration(_) => NodeType::FunctionDeclaration, // Se for uma declaração de função
-            Expr::Identifier(_) => NodeType::Identifier, // Se for um identificador
-            Expr::IfStmt(_) => NodeType::IfStmt, // Se for uma declaração de condicional 'if'
-            Expr::ImportStmt(_) => NodeType::ImportStmt, // Se for uma declaração de importação
-            Expr::LogicalNotExpr(_) => NodeType::LogicalNotExpr, // Se for uma expressão como !x
-            Expr::LoopStmt(_) => NodeType::LoopStmt, // Se for um loop statement
-            Expr::MemberExpr(_) => NodeType::MemberExpr, // Se for uma expressão de membro
-            Expr::MovStmt(_) => NodeType::MovStmt, // Se for um statement de mov em assembly
-            Expr::VoidLiteral(_) => NodeType::VoidLiteral, // Se for um literal nulo
-            Expr::NumericLiteral(_) => NodeType::NumericLiteral, // Se for um literal numérico
-            Expr::ObjectLiteral(_) => NodeType::ObjectLiteral, // Se for um literal de objeto
-            Expr::PostDecrementExpr(_) => NodeType::PostDecrementExpr, // Se for uma expressão como x--
-            Expr::PostIncrementExpr(_) => NodeType::PostIncrementExpr, // Se for uma expressão como x++
-            Expr::PreDecrementExpr(_) => NodeType::PreDecrementExpr, // Se for uma expressão como --x
-            Expr::PreIncrementExpr(_) => NodeType::PreIncrementExpr, // Se for uma expressão como ++x
-            Expr::RangeExpr(_) => NodeType::RangeExpr, // Se for uma expressão de intervalo ou intervalo incluso
-            Expr::StringLiteral(_) => NodeType::StringLiteral, // Se for um literal de string
-            Expr::TernaryExpr(_) => NodeType::TernaryExpr, // Se for uma expressão ternária
-            Expr::TupleLiteral(_) => NodeType::TupleLiteral, // Se for uma tupla
-            Expr::UnaryBitwiseNotExpr(_) => NodeType::UnaryBitwiseNotExpr, // Se for uma expressão de bitwise not
-            Expr::UnaryMinusExpr(_) => NodeType::UnaryMinusExpr, // Se for uma expressão como -x
-            Expr::UnitDeclaration(_) => NodeType::UnitDeclaration, // Se for uma declaração de unit
-            Expr::UnitFunctionDeclaration(_) => NodeType::UnitFunctionDeclaration, // Se for uma declaração de função dentro de uma unit
-            Expr::UnitVarDeclaration(_) => NodeType::UnitVarDeclaration, // Se for uma declaração de variável dentro de uma unit
-            Expr::VarDeclaration(_) => NodeType::VarDeclaration, // Se for uma declaração de variável
-            Expr::WhileStmt(_) => NodeType::WhileStmt,           // Se for um while statement
+            Expr::Enum(_) => NodeType::Enum,
+            Expr::ExportStmt(_) => NodeType::ExportStmt,
+            Expr::ForStmt(_) => NodeType::ForStmt,
+            Expr::FunctionDeclaration(_) => NodeType::FunctionDeclaration,
+            Expr::Identifier(_) => NodeType::Identifier,
+            Expr::IfStmt(_) => NodeType::IfStmt,
+            Expr::ImportStmt(_) => NodeType::ImportStmt,
+            Expr::LogicalNotExpr(_) => NodeType::LogicalNotExpr,
+            Expr::LoopStmt(_) => NodeType::LoopStmt,
+            Expr::MemberExpr(_) => NodeType::MemberExpr,
+            Expr::MovStmt(_) => NodeType::MovStmt,
+            Expr::VoidLiteral(_) => NodeType::VoidLiteral,
+            Expr::NumericLiteral(_) => NodeType::NumericLiteral,
+            Expr::ObjectLiteral(_) => NodeType::ObjectLiteral,
+            Expr::PostDecrementExpr(_) => NodeType::PostDecrementExpr,
+            Expr::PostIncrementExpr(_) => NodeType::PostIncrementExpr,
+            Expr::PreDecrementExpr(_) => NodeType::PreDecrementExpr,
+            Expr::PreIncrementExpr(_) => NodeType::PreIncrementExpr,
+            Expr::RangeExpr(_) => NodeType::RangeExpr,
+            Expr::StringLiteral(_) => NodeType::StringLiteral,
+            Expr::TernaryExpr(_) => NodeType::TernaryExpr,
+            Expr::TupleLiteral(_) => NodeType::TupleLiteral,
+            Expr::UnaryBitwiseNotExpr(_) => NodeType::UnaryBitwiseNotExpr,
+            Expr::UnaryMinusExpr(_) => NodeType::UnaryMinusExpr,
+            Expr::ClassDeclaration(_) => NodeType::ClassDeclaration,
+            Expr::ClassFunctionDeclaration(_) => NodeType::ClassFunctionDeclaration,
+            Expr::ClassVarDeclaration(_) => NodeType::ClassVarDeclaration,
+            Expr::VarDeclaration(_) => NodeType::VarDeclaration,
+            Expr::WhileStmt(_) => NodeType::WhileStmt,
             Expr::_EOL(_) => NodeType::_EOL,
         }
     }
 
     pub fn local(&self) -> ((usize, usize), (usize, usize), usize) {
         match self {
-            Expr::ArrayAccess(e) => (e.position, e.column, e.lineno), // Se for um array access
-            Expr::ArrayExpr(e) => (e.position, e.column, e.lineno),   // Se for um array
-            Expr::AsmStmt(e) => (e.position, e.column, e.lineno), // Se for um statement de assembly
-            Expr::AssignmentExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão de atribuição
-            Expr::BinaryExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão binária
-            Expr::BlockExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão de bloco
-            Expr::BooleanLiteral(e) => (e.position, e.column, e.lineno), // Se for uma expressão booleana
-            Expr::BreakExpr(e) => (e.position, e.column, e.lineno),      // Se for um break
-            Expr::CallExpr(e) => (e.position, e.column, e.lineno), // Se for uma chamada de função
+            Expr::ArrayAccess(e) => (e.position, e.column, e.lineno),
+            Expr::ArrayExpr(e) => (e.position, e.column, e.lineno),
+            Expr::AsmStmt(e) => (e.position, e.column, e.lineno),
+            Expr::AssignmentExpr(e) => (e.position, e.column, e.lineno),
+            Expr::BinaryExpr(e) => (e.position, e.column, e.lineno),
+            Expr::BlockExpr(e) => (e.position, e.column, e.lineno),
+            Expr::BooleanLiteral(e) => (e.position, e.column, e.lineno),
+            Expr::BreakExpr(e) => (e.position, e.column, e.lineno),
+            Expr::CallExpr(e) => (e.position, e.column, e.lineno),
             Expr::ContinueExpr(e) => (e.position, e.column, e.lineno),
-            Expr::Enum(e) => (e.position, e.column, e.lineno), // Se for um enum
-            Expr::ExportStmt(e) => (e.position, e.column, e.lineno), // Se for uma declaração de exportação
-            Expr::ForStmt(e) => (e.position, e.column, e.lineno),    // Se for um for statement
-            Expr::FunctionDeclaration(e) => (e.position, e.column, e.lineno), // Se for uma declaração de função
-            Expr::Identifier(e) => (e.position, e.column, e.lineno), // Se for um identificador
-            Expr::IfStmt(e) => (e.position, e.column, e.lineno), // Se for uma declaração de condicional 'if'
-            Expr::ImportStmt(e) => (e.position, e.column, e.lineno), // Se for uma declaração de importação
-            Expr::LogicalNotExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão como !x
-            Expr::LoopStmt(e) => (e.position, e.column, e.lineno),       // Se for um loop statement
-            Expr::MemberExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão de membro
-            Expr::MovStmt(e) => (e.position, e.column, e.lineno), // Se for um statement de mov em assembly
-            Expr::VoidLiteral(e) => (e.position, e.column, e.lineno), // Se for um literal nulo
-            Expr::NumericLiteral(e) => (e.position, e.column, e.lineno), // Se for um literal numérico
-            Expr::ObjectLiteral(e) => (e.position, e.column, e.lineno), // Se for um literal de objeto
-            Expr::PostDecrementExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão como x--
-            Expr::PostIncrementExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão como x++
-            Expr::PreDecrementExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão como --x
-            Expr::PreIncrementExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão como ++x
-            Expr::RangeExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão de intervalo ou intervalo incluso
-            Expr::StringLiteral(e) => (e.position, e.column, e.lineno), // Se for um literal de string
-            Expr::TernaryExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão ternária
-            Expr::TupleLiteral(e) => (e.position, e.column, e.lineno), // Se for uma tupla
-            Expr::UnaryBitwiseNotExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão de bitwise not
-            Expr::UnaryMinusExpr(e) => (e.position, e.column, e.lineno), // Se for uma expressão como -x
-            Expr::UnitDeclaration(e) => (e.position, e.column, e.lineno), // Se for uma declaração de unit
-            Expr::UnitFunctionDeclaration(e) => (e.position, e.column, e.lineno), // Se for uma declaração de função dentro de uma unit
-            Expr::UnitVarDeclaration(e) => (e.position, e.column, e.lineno), // Se for uma declaração de variável dentro de uma unit
-            Expr::VarDeclaration(e) => (e.position, e.column, e.lineno), // Se for uma declaração de variável
+            Expr::Enum(e) => (e.position, e.column, e.lineno),
+            Expr::ExportStmt(e) => (e.position, e.column, e.lineno),
+            Expr::ForStmt(e) => (e.position, e.column, e.lineno),
+            Expr::FunctionDeclaration(e) => (e.position, e.column, e.lineno),
+            Expr::Identifier(e) => (e.position, e.column, e.lineno),
+            Expr::IfStmt(e) => (e.position, e.column, e.lineno),
+            Expr::ImportStmt(e) => (e.position, e.column, e.lineno),
+            Expr::LogicalNotExpr(e) => (e.position, e.column, e.lineno),
+            Expr::LoopStmt(e) => (e.position, e.column, e.lineno),
+            Expr::MemberExpr(e) => (e.position, e.column, e.lineno),
+            Expr::MovStmt(e) => (e.position, e.column, e.lineno),
+            Expr::VoidLiteral(e) => (e.position, e.column, e.lineno),
+            Expr::NumericLiteral(e) => (e.position, e.column, e.lineno),
+            Expr::ObjectLiteral(e) => (e.position, e.column, e.lineno),
+            Expr::PostDecrementExpr(e) => (e.position, e.column, e.lineno),
+            Expr::PostIncrementExpr(e) => (e.position, e.column, e.lineno),
+            Expr::PreDecrementExpr(e) => (e.position, e.column, e.lineno),
+            Expr::PreIncrementExpr(e) => (e.position, e.column, e.lineno),
+            Expr::RangeExpr(e) => (e.position, e.column, e.lineno),
+            Expr::StringLiteral(e) => (e.position, e.column, e.lineno),
+            Expr::TernaryExpr(e) => (e.position, e.column, e.lineno),
+            Expr::TupleLiteral(e) => (e.position, e.column, e.lineno),
+            Expr::UnaryBitwiseNotExpr(e) => (e.position, e.column, e.lineno),
+            Expr::UnaryMinusExpr(e) => (e.position, e.column, e.lineno),
+            Expr::ClassDeclaration(e) => (e.position, e.column, e.lineno),
+            Expr::ClassFunctionDeclaration(e) => (e.position, e.column, e.lineno),
+            Expr::ClassVarDeclaration(e) => (e.position, e.column, e.lineno),
+            Expr::VarDeclaration(e) => (e.position, e.column, e.lineno),
             Expr::WhileStmt(e) => (e.position, e.column, e.lineno),
             Expr::_EOL(_) => ((0, 0), (0, 0), 0),
         }
@@ -272,10 +269,10 @@ pub struct RangeExpr {
 }
 
 #[derive(Debug, Clone)]
-pub struct UnitDeclaration {
+pub struct ClassDeclaration {
     pub kind: NodeType,
     pub name: String,
-    pub super_units: Option<Vec<String>>,
+    pub super_class: Option<String>,
     pub body: Vec<Stmt>,
     pub column: (usize, usize),
     pub position: (usize, usize),
@@ -283,7 +280,7 @@ pub struct UnitDeclaration {
 }
 
 #[derive(Debug, Clone)]
-pub struct UnitFunctionDeclaration {
+pub struct ClassFunctionDeclaration {
     pub kind: NodeType,
     pub access_modifier: String,
     pub function: Expr,
@@ -293,7 +290,7 @@ pub struct UnitFunctionDeclaration {
 }
 
 #[derive(Debug, Clone)]
-pub struct UnitVarDeclaration {
+pub struct ClassVarDeclaration {
     pub kind: NodeType,
     pub access_modifier: String,
     pub var: Stmt,
