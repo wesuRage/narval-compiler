@@ -2625,28 +2625,20 @@ impl Parser {
             let column: (usize, usize) = self.at().column;
             let position: (usize, usize) = self.at().position;
             let lineno: usize = self.at().lineno;
-            // Se for um parêntese aberto, consome o token e analisa a expressão dentro dos parênteses
+
             self.eat();
-            let expr: Expr = self.parse_expr(); // Analisa a expressão dentro dos parênteses
+            let expr: Expr = self.parse_expr();
+
             if self.at().token_type == TokenType::Comma {
-                self.eat();
-
                 let mut values: Vec<Expr> = Vec::new();
-                values.push(expr);
-                let mut did = false;
-                while self.at().token_type != TokenType::CParen {
-                    if !did {
-                        self.expect(TokenType::Comma, "Expected \",\" here.");
-                        did = true;
-                    }
+                while self.at().token_type == TokenType::Comma {
+                    self.eat();
                     values.push(self.parse_expr());
-
-                    if self.at().token_type == TokenType::Comma {
+                    if self.at().token_type == TokenType::CParen {
                         self.eat();
+                        break;
                     }
                 }
-
-                self.expect(TokenType::CParen, "\")\" Expected."); // Espera um parêntese fechado
 
                 return Expr::TupleLiteral(TupleLiteral {
                     kind: NodeType::TupleLiteral,
@@ -2655,15 +2647,17 @@ impl Parser {
                     column,
                     position,
                     lineno,
-                }); // Retorna a expressão analisada
+                }); // Returns the analyzed expression
             }
 
-            self.expect(TokenType::CParen, "\")\" Expected."); // Espera um parêntese fechado
-            expr // Retorna a expressão analisada
+            self.expect(TokenType::CParen, "\")\" Expected."); // Expects a closing parenthesis
+
+            expr // Returns the analyzed expression
         } else {
             self.parse_essential_expr()
         }
     }
+
     // Método para analisar uma expressão primária
     fn parse_essential_expr(&mut self) -> Expr {
         // Verifica o tipo de token atual
