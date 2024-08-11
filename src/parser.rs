@@ -2753,6 +2753,22 @@ impl Parser {
                 });
             }
 
+            TokenType::Continue => {
+                let column: (usize, usize) = self.at().column;
+                let position: (usize, usize) = self.at().position;
+                let lineno: usize = self.at().lineno;
+                self.eat();
+
+                self.expect(TokenType::Semicolon, "\";\" Expected.");
+
+                return Expr::ContinueExpr(ContinueExpr {
+                    kind: NodeType::ContinueExpr,
+                    column,
+                    position,
+                    lineno,
+                });
+            }
+
             // Se for um break;
             TokenType::Break => {
                 let column: (usize, usize) = self.at().column;
