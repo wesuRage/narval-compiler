@@ -40,6 +40,7 @@ pub enum NodeType {
     TernaryExpr,
     BlockExpr,
     BreakExpr,
+    ContinueExpr,
     ArrayExpr,
     ArrayAccess,
     PreIncrementExpr,
@@ -86,6 +87,7 @@ pub enum Expr {
     TernaryExpr(TernaryExpr),
     BlockExpr(Box<BlockExpr>),
     BreakExpr(BreakExpr),
+    ContinueExpr(ContinueExpr),
     ArrayExpr(ArrayExpr),
     ArrayAccess(ArrayAccess),
     LogicalNotExpr(LogicalNotExpr),
@@ -157,9 +159,10 @@ impl Expr {
             Expr::BooleanLiteral(_) => NodeType::BooleanLiteral, // Se for uma expressão booleana
             Expr::BreakExpr(_) => NodeType::BreakExpr,           // Se for um break
             Expr::CallExpr(_) => NodeType::CallExpr,             // Se for uma chamada de função
-            Expr::Enum(_) => NodeType::Enum,                     // Se for um enum
+            Expr::ContinueExpr(_) => NodeType::ContinueExpr,
+            Expr::Enum(_) => NodeType::Enum, // Se for um enum
             Expr::ExportStmt(_) => NodeType::ExportStmt, // Se for uma declaração de exportação
-            Expr::ForStmt(_) => NodeType::ForStmt,       // Se for um for statement
+            Expr::ForStmt(_) => NodeType::ForStmt, // Se for um for statement
             Expr::FunctionDeclaration(_) => NodeType::FunctionDeclaration, // Se for uma declaração de função
             Expr::Identifier(_) => NodeType::Identifier, // Se for um identificador
             Expr::IfStmt(_) => NodeType::IfStmt, // Se for uma declaração de condicional 'if'
@@ -201,7 +204,8 @@ impl Expr {
             Expr::BooleanLiteral(e) => (e.position, e.column, e.lineno), // Se for uma expressão booleana
             Expr::BreakExpr(e) => (e.position, e.column, e.lineno),      // Se for um break
             Expr::CallExpr(e) => (e.position, e.column, e.lineno), // Se for uma chamada de função
-            Expr::Enum(e) => (e.position, e.column, e.lineno),     // Se for um enum
+            Expr::ContinueExpr(e) => (e.position, e.column, e.lineno),
+            Expr::Enum(e) => (e.position, e.column, e.lineno), // Se for um enum
             Expr::ExportStmt(e) => (e.position, e.column, e.lineno), // Se for uma declaração de exportação
             Expr::ForStmt(e) => (e.position, e.column, e.lineno),    // Se for um for statement
             Expr::FunctionDeclaration(e) => (e.position, e.column, e.lineno), // Se for uma declaração de função
@@ -405,6 +409,14 @@ pub struct LoopStmt {
 
 #[derive(Debug, Clone)]
 pub struct BreakExpr {
+    pub kind: NodeType,
+    pub column: (usize, usize),
+    pub position: (usize, usize),
+    pub lineno: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct ContinueExpr {
     pub kind: NodeType,
     pub column: (usize, usize),
     pub position: (usize, usize),
