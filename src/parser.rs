@@ -212,12 +212,12 @@ impl Parser {
             TokenType::For => self.parse_for_stmt(),
             // Se o token atual for um while
             TokenType::While => self.parse_while_stmt(),
-            // Se o token atual for uma unit
-            TokenType::Unit => self.parse_unit(),
+            // Se o token atual for uma class
+            TokenType::Class => self.parse_class(),
             // Se o token atual for um enum
             TokenType::Enum => self.parse_enum(),
-            // Se o token atual for private ou public, analisa um statement unit
-            TokenType::Private | TokenType::Public => self.parse_unit_statement_declaration(),
+            // Se o token atual for private ou public, analisa um statement class
+            TokenType::Private | TokenType::Public => self.parse_class_statement_declaration(),
             // Analisa declaração de variaveis simples, tipadas ou não
             TokenType::Var => self.parse_var_variable_declaration(),
             // Analisa declaração de funções
@@ -1713,7 +1713,7 @@ impl Parser {
         }))
     }
 
-    fn parse_unit_statement_declaration(&mut self) -> Stmt {
+    fn parse_class_statement_declaration(&mut self) -> Stmt {
         let mut column: (usize, usize) = self.at().column;
         let mut position: (usize, usize) = self.at().position;
         let lineno: usize = self.at().lineno;
@@ -1729,10 +1729,10 @@ impl Parser {
 
         if self.at().token_type == TokenType::Label {
             return Stmt {
-                kind: NodeType::UnitFunctionDeclaration,
-                expr: Some(Expr::UnitFunctionDeclaration(Box::new(
-                    UnitFunctionDeclaration {
-                        kind: NodeType::UnitFunctionDeclaration,
+                kind: NodeType::ClassFunctionDeclaration,
+                expr: Some(Expr::ClassFunctionDeclaration(Box::new(
+                    ClassFunctionDeclaration {
+                        kind: NodeType::ClassFunctionDeclaration,
                         access_modifier,
                         function: self.parse_function_declaration(),
                         column,
@@ -1748,9 +1748,9 @@ impl Parser {
         }
 
         Stmt {
-            kind: NodeType::UnitVarDeclaration,
-            expr: Some(Expr::UnitVarDeclaration(Box::new(UnitVarDeclaration {
-                kind: NodeType::UnitVarDeclaration,
+            kind: NodeType::ClassVarDeclaration,
+            expr: Some(Expr::ClassVarDeclaration(Box::new(ClassVarDeclaration {
+                kind: NodeType::ClassVarDeclaration,
                 access_modifier,
                 var: self.parse_stmt(),
                 column,
@@ -1764,40 +1764,35 @@ impl Parser {
         }
     }
 
-    // Método para analisar uma unidade (unit)
-    fn parse_unit(&mut self) -> Stmt {
+    // Método para analisar uma unidade (class)
+    fn parse_class(&mut self) -> Stmt {
         let mut column: (usize, usize) = self.at().column;
         let mut position: (usize, usize) = self.at().position;
         let lineno: usize = self.at().lineno;
 
-        self.eat(); // Consome o token "unit"
+        self.eat(); // Consome o token "class"
 
-        // Nome da unit
+        // Nome da class
         let name: String = self
             .expect(TokenType::Identifier, "Identifier Expected.")
             .value
             .clone();
 
-        // Herança de units
-        let mut super_units: Option<Vec<String>> = Some(Vec::new());
+        // Herança de class
+        let mut super_class: Option<String> = Some(String::new());
 
         if self.at().token_type == TokenType::OParen {
             self.eat(); // Consome o token "("
-            while self.at().token_type == TokenType::Identifier {
-                if let Some(units) = super_units.as_mut() {
-                    units.push(self.eat().value.clone());
-                }
-
-                if self.at().token_type == TokenType::Comma {
-                    self.eat(); // Consome o token ","
-                }
+            if let Some(class) = super_class.as_mut() {
+                class.push_str(self.eat().value.clone().as_str());
             }
+
             self.expect(TokenType::CParen, "\")\" Expected.");
         }
 
         self.expect(TokenType::OBrace, "\"{\" Expected.");
 
-        // Corpo da unit
+        // Corpo da class
         let mut body: Vec<Stmt> = Vec::new();
         while self.not_eof() && self.at().token_type != TokenType::CBrace {
             body.push(self.parse_stmt());
@@ -1808,10 +1803,10 @@ impl Parser {
         column.1 = self.at().column.1 - 1;
         position.1 = self.at().position.1 - 1;
 
-        let expr: Option<Expr> = Some(Expr::UnitDeclaration(Box::new(UnitDeclaration {
-            kind: NodeType::UnitDeclaration,
+        let expr: Option<Expr> = Some(Expr::ClassDeclaration(Box::new(ClassDeclaration {
+            kind: NodeType::ClassDeclaration,
             name,
-            super_units,
+            super_class,
             body,
             column,
             position,
@@ -1819,7 +1814,7 @@ impl Parser {
         })));
 
         Stmt {
-            kind: NodeType::UnitDeclaration,
+            kind: NodeType::ClassDeclaration,
             expr,
             return_stmt: None,
             column,

@@ -22,6 +22,7 @@ pub enum TokenType {
     CBrace,
     CBracket,
     CComment,
+    Class,
     Colon,
     Comma,
     Comment,
@@ -96,7 +97,6 @@ pub enum TokenType {
     String,
     Text,
     True,
-    Unit,
     Var,
     Void,
     While,
@@ -208,7 +208,7 @@ impl TokenDefinitions {
         keywords.insert("return", TokenType::Return);
         keywords.insert("text", TokenType::Text);
         keywords.insert("true", TokenType::True);
-        keywords.insert("unit", TokenType::Unit);
+        keywords.insert("class", TokenType::Class);
         keywords.insert("var", TokenType::Var);
         keywords.insert("void", TokenType::Void);
         keywords.insert("while", TokenType::While);
