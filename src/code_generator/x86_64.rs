@@ -1,7 +1,7 @@
 use crate::ast::*;
 use crate::colors::printc;
 use crate::datatype::*;
-use std::borrow::{Borrow, BorrowMut};
+use core::panic;
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
@@ -17,6 +17,10 @@ pub struct X8664Generator<'a> {
     pub strings: HashMap<String, (String, Option<String>)>,
     pub unitialized_strings_counter: usize,
     pub unitialized_integer_counter: usize,
+    pub unitialized_boolean_counter: usize,
+    pub unitialized_array_counter: usize,
+    pub unitialized_tuple_counter: usize,
+    pub unitialized_void_counter: usize,
     pub string_pointer_counter: usize,
     pub integer_pointer_counter: usize,
     pub temp_return_counter: usize,
@@ -30,10 +34,14 @@ pub struct X8664Generator<'a> {
     pub for_iterators: HashMap<String, String>,
     pub for_range_is_string: bool,
     pub for_range_is_ascii: bool,
+    pub for_range_is_array: bool,
     pub for_iterable_string: String,
     pub for_pointer_counter: usize,
+    pub current_for_array: String,
     pub if_counter: usize,
     pub while_counter: usize,
+    pub loop_counter: usize,
+    pub values: HashMap<String, (String, Datatype)>,
 }
 
 #[derive(Clone)]
@@ -70,6 +78,10 @@ impl<'a> X8664Generator<'a> {
             strings: HashMap::new(),
             unitialized_strings_counter: 0,
             unitialized_integer_counter: 0,
+            unitialized_boolean_counter: 0,
+            unitialized_void_counter: 0,
+            unitialized_array_counter: 0,
+            unitialized_tuple_counter: 0,
             temp_return_counter: 0,
             string_pointer_counter: 0,
             integer_pointer_counter: 0,
@@ -86,10 +98,14 @@ impl<'a> X8664Generator<'a> {
             for_iterators: HashMap::new(),
             for_range_is_string: false,
             for_range_is_ascii: false,
+            for_range_is_array: false,
             for_iterable_string: "".to_string(),
             for_pointer_counter: 0,
+            current_for_array: "".to_string(),
             if_counter: 0,
             while_counter: 0,
+            loop_counter: 0,
+            values: HashMap::new(),
         }
     }
 
@@ -105,11 +121,22 @@ impl<'a> X8664Generator<'a> {
                     self.generate_function_declaration(*decl, &mut other, "".to_string());
                 }
                 Some(Expr::CallExpr(expr)) => self.generate_call_expr(expr, &mut main),
-                Some(Expr::ForStmt(s)) => self.generate_for_stmt(s, &mut main),
-                Some(Expr::IfStmt(s)) => {
-                    self.generate_if_stmt(*s, true, "".to_string(), &mut main, "".to_string())
+                Some(Expr::ForStmt(statement)) => self.generate_for_stmt(statement, &mut main),
+                Some(Expr::IfStmt(statement)) => self.generate_if_stmt(
+                    *statement,
+                    true,
+                    "".to_string(),
+                    &mut main,
+                    "".to_string(),
+                    "".to_string(),
+                    0,
+                ),
+                Some(Expr::LoopStmt(inconditional_loop)) => {
+                    self.generate_loop_stmt(inconditional_loop, &mut main)
                 }
-                Some(Expr::WhileStmt(w)) => self.generate_while_stmt(*w, &mut main),
+                Some(Expr::WhileStmt(while_loop)) => {
+                    self.generate_while_stmt(*while_loop, &mut main)
+                }
                 _ => (),
             }
         }
@@ -230,6 +257,7 @@ impl<'a> X8664Generator<'a> {
                             self.temp_return_counter,
                         ))
                     }
+                    // Expr::TupleLiteral(tup) => self.generate_tuple_literal(tup),
                     _ => println!("Expression not supported in return statement: {:?}", arg),
                 }
                 scope.push(format!(
@@ -309,10 +337,17 @@ impl<'a> X8664Generator<'a> {
                 // }
                 Some(Expr::CallExpr(expr)) => self.generate_call_expr(expr, &mut new_scope),
                 Some(Expr::ForStmt(s)) => self.generate_for_stmt(s, &mut new_scope),
-                Some(Expr::IfStmt(s)) => {
-                    self.generate_if_stmt(*s, true, "".to_string(), &mut new_scope, "".to_string())
-                }
+                Some(Expr::IfStmt(s)) => self.generate_if_stmt(
+                    *s,
+                    true,
+                    "".to_string(),
+                    &mut new_scope,
+                    "".to_string(),
+                    "".to_string(),
+                    0,
+                ),
                 Some(Expr::WhileStmt(w)) => self.generate_while_stmt(*w, &mut new_scope),
+                Some(Expr::LoopStmt(l)) => self.generate_loop_stmt(l, scope),
                 _ => (),
             }
             if !stmt.return_stmt.is_none() {
@@ -855,12 +890,38 @@ impl<'a> X8664Generator<'a> {
                     if !parent.is_empty() {
                         self.local_identifier
                             .insert(identifier.clone(), format!("{}_{}", parent, identifier));
-                        format!(
-                            "\t{}_{} {} 1, {}\n",
-                            parent, identifier, directive, ident.symbol
-                        )
+
+                        if let Some((val, typ)) =
+                            self.values.get(&ident.symbol).map(|(v, t)| (v, t))
+                        {
+                            let dat_type = match typ {
+                                &Datatype::Integer => "0",
+                                &Datatype::Text => "2",
+                                &Datatype::Boolean => "3",
+                                &Datatype::Array(_) => "5",
+                                &Datatype::Tuple(_) => "6",
+                                _ => "4",
+                            };
+                            format!("\t{}_{} {}, {}\n", parent, identifier, dat_type, val)
+                        } else {
+                            panic!("Value not found in identifier: {}", ident.symbol)
+                        }
                     } else {
-                        format!("\t{} {} 1, {}\n", identifier, directive, ident.symbol)
+                        if let Some((val, typ)) =
+                            self.values.get(&ident.symbol).map(|(v, t)| (v, t))
+                        {
+                            let dat_type = match typ {
+                                &Datatype::Integer => "0",
+                                &Datatype::Text => "2",
+                                &Datatype::Boolean => "3",
+                                &Datatype::Array(_) => "5",
+                                &Datatype::Tuple(_) => "6",
+                                _ => "4",
+                            };
+                            format!("\t{} {}, {}\n", identifier, dat_type, val)
+                        } else {
+                            panic!("Value not found in identifier: {}", ident.symbol)
+                        }
                     }
                 } else {
                     format!("")
@@ -878,15 +939,29 @@ impl<'a> X8664Generator<'a> {
                             .insert(identifier.clone(), format!("{}_{}", parent, identifier));
                         let assign: String =
                             format!("\t{}_{} {} 0, {}\n", parent, identifier, directive, value);
-
+                        self.values.insert(
+                            format!("{}_{}", parent, identifier),
+                            (value.to_string(), Datatype::Integer),
+                        );
                         self.unitialized_integer_counter += 1;
+
+                        self.values.insert(
+                            format!("{}_{}", parent, identifier),
+                            (value.to_string(), Datatype::Integer),
+                        );
 
                         assign
                     } else {
                         let assign: String =
                             format!("\t{} {} 0, {}\n", identifier, directive, value);
-
+                        self.values.insert(
+                            format!("{}", identifier),
+                            (value.to_string(), Datatype::Integer),
+                        );
                         self.unitialized_integer_counter += 1;
+
+                        self.values
+                            .insert(identifier.clone(), (value.to_string(), Datatype::Integer));
 
                         assign
                     }
@@ -908,6 +983,11 @@ impl<'a> X8664Generator<'a> {
                             parent, identifier, directive, self.string_pointer_counter
                         );
                         self.string_pointer_counter += 1;
+
+                        self.values.insert(
+                            format!("{}_{}", parent, identifier),
+                            (str_lit.value, Datatype::Text),
+                        );
                         string
                     } else {
                         self.segments.data.push(format!(
@@ -921,6 +1001,8 @@ impl<'a> X8664Generator<'a> {
 
                         self.string_pointer_counter += 1;
 
+                        self.values
+                            .insert(identifier.clone(), (str_lit.value, Datatype::Text));
                         string
                     }
                 } else {
@@ -932,11 +1014,18 @@ impl<'a> X8664Generator<'a> {
                     if !parent.is_empty() {
                         self.local_identifier
                             .insert(identifier.clone(), format!("{}_{}", parent, identifier));
+
+                        self.values.insert(
+                            format!("{}_{}", parent, identifier.clone()),
+                            ("0".to_string(), Datatype::Boolean),
+                        );
                         format!(
                             "\t{}_{} {} 3, \"{}\", 0\n",
                             parent, identifier, directive, boolean.value
                         )
                     } else {
+                        self.values
+                            .insert(identifier.clone(), ("0".to_string(), Datatype::Boolean));
                         format!(
                             "\t{} {} 3, \"{}\", 0\n",
                             identifier, directive, boolean.value
@@ -951,8 +1040,12 @@ impl<'a> X8664Generator<'a> {
                     self.local_identifier
                         .insert(identifier.clone(), format!("{}_{}", parent, identifier));
 
+                    self.values
+                        .insert(identifier.clone(), ("0".to_string(), Datatype::Void));
                     format!("\t{}_{} {} 4, 0\n", parent, identifier, directive)
                 } else {
+                    self.values
+                        .insert(identifier.clone(), ("0".to_string(), Datatype::Void));
                     format!("\t{} db 4, 0\n", identifier)
                 }
             }
@@ -1000,9 +1093,8 @@ impl<'a> X8664Generator<'a> {
                             .insert(identifier.clone(), format!("{}_{}", parent, identifier));
                     }
 
-                    let mut new_id = &identifier;
-                    let mut formatted = String::new();
                     let cloned = self.local_identifier.clone();
+                    let new_id: &String;
                     {
                         new_id = {
                             if let Some(id) = self.strings.get(&identifier).map(|(name, _)| name) {
@@ -1034,14 +1126,159 @@ impl<'a> X8664Generator<'a> {
                         Datatype::Text => "2",
                         Datatype::Boolean => "3",
                         Datatype::Void => "4",
+                        Datatype::Array(_) => "5",
+                        Datatype::Tuple(_) => "6",
                         _ => "1",
                     };
 
                     self.segments
                         .data
                         .push(format!("\t{} dq {}, 0\n", new_id, typ));
+                    format!("")
+                } else {
+                    format!("")
+                }
+            }
+            NodeType::ArrayExpr => {
+                if let Expr::ArrayExpr(array) = declaration_value.clone() {
+                    let elements = array.elements;
+                    let mut elements_str = Vec::new();
 
-                    formatted
+                    for (index, element) in elements.iter().enumerate() {
+                        match element {
+                            Expr::StringLiteral(s) => {
+                                let string_label =
+                                    format!("__STR_{}", self.unitialized_strings_counter);
+                                let string_def =
+                                    format!("\t{} db \"{}\", 0x0\n", string_label, s.value);
+                                self.segments.data.push(string_def);
+
+                                let array_elem_data = format!(
+                                    "\t__array_{}_{} dq 2, {}\n",
+                                    identifier, index, string_label
+                                );
+
+                                let array_elem = format!("__array_{}_{}", identifier, index);
+
+                                elements_str.push(array_elem);
+                                self.segments.data.push(array_elem_data);
+                                self.unitialized_strings_counter += 1;
+                            }
+                            Expr::NumericLiteral(n) => {
+                                let array_elem_data = format!(
+                                    "\t__array_{}_{} dq 0, {}\n",
+                                    identifier, index, n.value
+                                );
+
+                                let array_elem = format!("__array_{}_{}", identifier, index);
+
+                                elements_str.push(array_elem);
+                                self.segments.data.push(array_elem_data);
+                            }
+                            Expr::Identifier(id) => {
+                                let ident = self.search_symbol(&id.symbol);
+                                if let Some((value, typ)) =
+                                    self.values.get(&ident).map(|(v, t)| (v, t))
+                                {
+                                    let (placeholder, dat_type) = match typ {
+                                        &Datatype::Integer => {
+                                            let data = (
+                                                format!(
+                                                    "__INT_{}",
+                                                    self.unitialized_integer_counter
+                                                ),
+                                                "0",
+                                            );
+                                            self.unitialized_integer_counter += 1;
+                                            data
+                                        }
+                                        &Datatype::Text => {
+                                            let data = (
+                                                format!(
+                                                    "__STR_{}",
+                                                    self.unitialized_strings_counter
+                                                ),
+                                                "2",
+                                            );
+                                            self.unitialized_strings_counter += 1;
+                                            data
+                                        }
+                                        &Datatype::Boolean => {
+                                            let data = (
+                                                format!(
+                                                    "__BOOL_{}",
+                                                    self.unitialized_boolean_counter
+                                                ),
+                                                "3",
+                                            );
+                                            self.unitialized_boolean_counter += 1;
+                                            data
+                                        }
+                                        &Datatype::Array(_) => {
+                                            let data = (
+                                                format!("__ARR_{}", self.unitialized_array_counter),
+                                                "5",
+                                            );
+                                            self.unitialized_array_counter += 1;
+                                            data
+                                        }
+                                        &Datatype::Tuple(_) => {
+                                            let data = (
+                                                format!("__TUP_{}", self.unitialized_tuple_counter),
+                                                "6",
+                                            );
+                                            self.unitialized_tuple_counter += 1;
+                                            data
+                                        }
+                                        _ => {
+                                            let data = (
+                                                format!("__VOID_{}", self.unitialized_void_counter),
+                                                "4",
+                                            );
+                                            self.unitialized_void_counter += 1;
+                                            data
+                                        }
+                                    };
+
+                                    let ptr: String;
+                                    if dat_type == "2" {
+                                        ptr = format!("\t{} db \"{}\", 0x0\n", placeholder, value);
+                                    } else {
+                                        ptr = format!("\t{} db {}\n", placeholder, value);
+                                    };
+
+                                    let array_elem_data = format!(
+                                        "\t__array_{}_{} dq {}, {}\n",
+                                        identifier, index, dat_type, placeholder
+                                    );
+
+                                    let array_elem = format!("__array_{}_{}", identifier, index);
+
+                                    self.segments.data.push(ptr);
+                                    self.segments.data.push(array_elem_data);
+                                    elements_str.push(array_elem);
+                                } else {
+                                    panic!("Identifier not found: {}", identifier)
+                                };
+                            }
+                            _ => println!("Element type not supported: {:?}", element),
+                        }
+                    }
+
+                    let array_def =
+                        format!("\t{} dq 5, {}, 0\n", identifier, elements_str.join(", "));
+                    self.segments.data.push(array_def);
+                    self.identifier
+                        .insert(identifier.clone(), ("dq".to_string(), NodeType::ArrayExpr));
+                    format!("")
+                } else {
+                    format!("")
+                }
+            }
+            NodeType::TupleLiteral => {
+                if let Expr::TupleLiteral(tuple) = declaration_value.clone() {
+                    let elements = tuple.value;
+                    format!("")
                 } else {
                     format!("")
                 }
@@ -1151,6 +1388,7 @@ impl<'a> X8664Generator<'a> {
                 self.unitialized_strings_counter += 1;
                 self.for_range_is_string = true;
                 self.for_range_is_ascii = false;
+                self.for_range_is_array = false;
             }
             Expr::NumericLiteral(e) => {
                 let value: String = e.value;
@@ -1158,6 +1396,7 @@ impl<'a> X8664Generator<'a> {
                 scope.push(format!("\txor rcx, rcx\n"));
                 self.for_range_is_string = false;
                 self.for_range_is_ascii = false;
+                self.for_range_is_array = false;
             }
             Expr::RangeExpr(r) => {
                 let start: Expr = r.start;
@@ -1171,8 +1410,70 @@ impl<'a> X8664Generator<'a> {
                 if range == "..=" {
                     scope.push("\tinc rax\n".to_string())
                 }
+                self.for_range_is_string = false;
+                self.for_range_is_ascii = false;
+                self.for_range_is_array = false;
+            }
+            Expr::Identifier(id) => {
+                let identifier = id.symbol;
+                let cloned = self.local_identifier.clone();
+                let new_id: &String;
+                {
+                    new_id = {
+                        if let Some(id) = self.strings.get(&identifier).map(|(name, _)| name) {
+                            id
+                        } else if let Some(id) = cloned.get(&identifier) {
+                            id
+                        } else if let Some(id) = self
+                            .function_parameter
+                            .get(&identifier)
+                            .map(|(name, _)| name)
+                        {
+                            id
+                        } else {
+                            &identifier
+                        }
+                    };
+                }
+
+                let typ = self
+                    .identifier
+                    .get(new_id)
+                    .map(|(_, t)| t)
+                    .unwrap_or(&NodeType::ArrayExpr)
+                    .to_owned();
+
+                match typ {
+                    NodeType::ArrayExpr => {
+                        scope.push("\tmov rax, 0\n".to_string());
+                        scope.push("\tmov rcx, rax\n".to_string());
+                        scope.push(format!("\tmov rdi, {}\n", new_id));
+                        scope.push("\tcall arrlen\n".to_string());
+                        scope.push("\tmov rbx, 4\n".to_string());
+                        scope.push("\tdiv rbx\n".to_string());
+                        scope.push("\tinc rax\n".to_string());
+                        self.current_for_array = new_id.to_owned();
+                        self.for_range_is_array = true;
+                        self.for_range_is_string = false;
+                        self.for_range_is_ascii = false;
+                    }
+                    _ => println!("Type not supported on sequence"),
+                }
             }
             _ => println!("Expression not supported on sequence: {:?}", sequence),
+        }
+    }
+
+    fn generate_continue_expr(&mut self, counter: usize, parent: String, scope: &mut Vec<String>) {
+        if parent.as_str().starts_with("__flow.for_") {
+            scope.push("\tpop rax\n".to_string());
+            scope.push("\tpop rcx\n".to_string());
+            scope.push("\tinc rcx\n".to_string());
+            scope.push(format!("\tjmp __flow.for_{}_loop\n", counter));
+        } else if parent.as_str().starts_with("__flow.while_") {
+            scope.push(format!("\tjmp __flow.while_{}\n", counter));
+        } else {
+            scope.push(format!("\tjmp __flow.loop_{}\n", counter));
         }
     }
 
@@ -1181,14 +1482,26 @@ impl<'a> X8664Generator<'a> {
         let sequence: Expr = *stmt.sequence;
         let body: Vec<Stmt> = stmt.body;
         let current_for: usize = self.for_counter;
-        scope.push(format!("__flow.for_{}:\n", current_for));
+        let label = format!("__flow.for_{}:\n", current_for);
+        scope.push(label.clone());
 
         if items.len() == 1 {
-            self.strings.insert(
-                items[0].clone(),
-                (format!("__for_pointer_{}", self.for_pointer_counter), None),
-            );
             self.generate_for_sequence(sequence, scope);
+
+            if self.for_range_is_array {
+                self.strings.insert(
+                    items[0].clone(),
+                    (
+                        format!("[__for_pointer_{}]", self.for_pointer_counter),
+                        None,
+                    ),
+                );
+            } else {
+                self.strings.insert(
+                    items[0].clone(),
+                    (format!("__for_pointer_{}", self.for_pointer_counter), None),
+                );
+            }
         }
 
         scope.push(format!("__flow.for_{}_loop:\n", current_for));
@@ -1236,6 +1549,19 @@ impl<'a> X8664Generator<'a> {
             ));
 
             self.for_pointer_counter += 1;
+        } else if self.for_range_is_array {
+            self.segments.data.push(format!(
+                "\t__for_pointer_{} dq 0\n",
+                self.for_pointer_counter
+            ));
+            scope.push("\tinc rcx\n".to_string());
+            scope.push(format!("\tmov rcx, [{}+rcx*8]\n", self.current_for_array));
+            scope.push(format!(
+                "\tmov [__for_pointer_{}], rcx\n",
+                self.for_pointer_counter
+            ));
+
+            self.for_pointer_counter += 1;
         } else {
             self.segments.data.push(format!(
                 "\t__for_pointer_{} dq 0, 0\n",
@@ -1267,16 +1593,22 @@ impl<'a> X8664Generator<'a> {
                     self.generate_for_stmt(s, scope)
                 }
                 Some(Expr::BreakExpr(_)) => {
-                    scope.push(format!("\tjmp __flow.for_{}_end:\n", current_for))
-                } //
+                    scope.push(format!("\tjmp __flow.for_{}_end\n", current_for))
+                }
+                Some(Expr::ContinueExpr(_)) => {
+                    self.generate_continue_expr(current_for, label.clone(), scope)
+                }
                 Some(Expr::IfStmt(s)) => self.generate_if_stmt(
                     *s,
                     true,
                     "".to_string(),
                     scope,
                     format!("__flow.for_{}_end", current_for),
+                    format!("__flow.for_{}_loop", current_for),
+                    current_for,
                 ),
                 Some(Expr::WhileStmt(w)) => self.generate_while_stmt(*w, scope),
+                Some(Expr::LoopStmt(l)) => self.generate_loop_stmt(l, scope),
                 _ => (),
             }
         }
@@ -1293,8 +1625,6 @@ impl<'a> X8664Generator<'a> {
     fn search_symbol(&self, symbol: &String) -> String {
         if let Some(s) = self.strings.get(symbol.as_str()).map(|(name, _)| name) {
             s.to_owned()
-        } else if let Some(s) = self.identifier.get(symbol.as_str()).map(|(name, _)| name) {
-            s.to_owned()
         } else if let Some(s) = self
             .function_parameter
             .get(symbol.as_str())
@@ -1309,7 +1639,10 @@ impl<'a> X8664Generator<'a> {
     }
     fn generate_test_expr(&mut self, expr: Expr, scope: &mut Vec<String>) {
         match expr {
-            Expr::BinaryExpr(binary_expr) => {}
+            Expr::BinaryExpr(binary_expr) => {
+                println!("{:?}", binary_expr);
+                unimplemented!()
+            }
             Expr::NumericLiteral(num) => {
                 let value: i32 = num.value.parse().ok().unwrap();
                 scope.push(format!("\tmov rax, {value}\n"));
@@ -1384,6 +1717,8 @@ impl<'a> X8664Generator<'a> {
         label: String,
         scope: &mut Vec<String>,
         breakable: String,
+        continuable: String,
+        parent_counter: usize,
     ) {
         let test = *stmt.test;
         let consequent = stmt.consequent;
@@ -1417,6 +1752,8 @@ impl<'a> X8664Generator<'a> {
                         label_end.clone(),
                         scope,
                         breakable.clone(),
+                        continuable.clone(),
+                        parent_counter.clone(),
                     );
                 }
                 Some(Expr::ForStmt(s)) => {
@@ -1424,7 +1761,12 @@ impl<'a> X8664Generator<'a> {
                     self.generate_for_stmt(s, scope)
                 }
                 Some(Expr::BreakExpr(_)) => scope.push(format!("\tjmp {breakable}\n")),
+                Some(Expr::ContinueExpr(_)) => {
+                    self.generate_continue_expr(parent_counter.clone(), continuable.clone(), scope)
+                }
+
                 Some(Expr::WhileStmt(w)) => self.generate_while_stmt(*w, scope),
+                Some(Expr::LoopStmt(l)) => self.generate_loop_stmt(l, scope),
                 _ => (),
             }
             hasret = s.return_stmt.is_some();
@@ -1444,15 +1786,23 @@ impl<'a> X8664Generator<'a> {
                         self.generate_var_declaration(v, scope, "".to_string())
                     }
                     Some(Expr::CallExpr(c)) => self.generate_call_expr(c, scope),
-                    Some(Expr::IfStmt(s)) => {
-                        self.generate_if_stmt(*s, true, label_end.clone(), scope, breakable.clone())
-                    }
+                    Some(Expr::IfStmt(s)) => self.generate_if_stmt(
+                        *s,
+                        true,
+                        label_end.clone(),
+                        scope,
+                        breakable.clone(),
+                        continuable.clone(),
+                        parent_counter.clone(),
+                    ),
                     Some(Expr::ForStmt(s)) => {
                         self.for_counter += 1;
                         self.generate_for_stmt(s, scope)
                     }
                     Some(Expr::BreakExpr(_)) => scope.push(format!("\tjmp {breakable}\n")),
+                    Some(Expr::ContinueExpr(_)) => scope.push(format!("\tjmp {}\n", continuable)),
                     Some(Expr::WhileStmt(w)) => self.generate_while_stmt(*w, scope),
+                    Some(Expr::LoopStmt(l)) => self.generate_loop_stmt(l, scope),
                     _ => (),
                 }
                 if s.return_stmt.is_some() {
@@ -1466,11 +1816,53 @@ impl<'a> X8664Generator<'a> {
         }
     }
 
-    fn generate_while_stmt(&mut self, stmt: WhileStmt, scope: &mut Vec<String>) {
-        let test = stmt.condition;
+    fn generate_loop_stmt(&mut self, stmt: LoopStmt, scope: &mut Vec<String>) {
         let body = stmt.body;
-        let label = format!("__flow.while_{}", self.while_counter);
-        let label_exit = format!("__flow.while_{}_end", self.while_counter);
+        let current_loop = self.loop_counter;
+        let label = format!("__flow.loop_{}", current_loop);
+        let label_exit = format!("__flow.loop_{}_end", current_loop);
+
+        scope.push(format!("\t{}:\n", label));
+
+        for statement in body {
+            match statement.expr {
+                Some(Expr::VarDeclaration(v)) => {
+                    self.generate_var_declaration(v, scope, format!("{}", label))
+                }
+                Some(Expr::CallExpr(c)) => self.generate_call_expr(c, scope),
+                Some(Expr::IfStmt(si)) => self.generate_if_stmt(
+                    *si,
+                    false,
+                    "".to_string(),
+                    scope,
+                    format!("{}", label_exit),
+                    label.clone(),
+                    current_loop,
+                ),
+                Some(Expr::WhileStmt(w)) => self.generate_while_stmt(*w, scope),
+                Some(Expr::BreakExpr(_)) => scope.push(format!("\tjmp {}\n", label_exit)),
+                Some(Expr::ContinueExpr(_)) => {
+                    self.generate_continue_expr(current_loop.clone(), label.clone(), scope)
+                }
+                Some(Expr::ForStmt(s)) => {
+                    self.for_counter += 1;
+                    self.generate_for_stmt(s, scope)
+                }
+                Some(Expr::LoopStmt(l)) => self.generate_loop_stmt(l, scope),
+                _ => (),
+            }
+        }
+
+        scope.push(format!("\tjmp {}\n", label));
+        scope.push(format!("\t{}:\n", label_exit))
+    }
+
+    fn generate_while_stmt(&mut self, stmt: WhileStmt, scope: &mut Vec<String>) {
+        let test: Expr = stmt.condition;
+        let body: Vec<Stmt> = stmt.body;
+        let current_while: usize = self.while_counter;
+        let label: String = format!("__flow.while_{}", current_while);
+        let label_exit: String = format!("__flow.while_{}_end", current_while);
         scope.push(format!("{}:\n", label.as_str()));
         if let Expr::BooleanLiteral(ref b) = test {
             if b.value == "false" {
@@ -1483,35 +1875,65 @@ impl<'a> X8664Generator<'a> {
         }
         self.while_counter += 1;
 
-        for s in body {
-            match s.expr {
+        for statement in body {
+            match statement.expr {
                 Some(Expr::VarDeclaration(v)) => {
                     self.generate_var_declaration(v, scope, format!("{}", label))
                 }
                 Some(Expr::CallExpr(c)) => self.generate_call_expr(c, scope),
-                //Some(Expr::FunctionDeclaration(f)) => self.generate_function_declaration(*f, scope, "".to_string()),
                 Some(Expr::IfStmt(si)) => self.generate_if_stmt(
                     *si,
                     false,
                     "".to_string(),
                     scope,
                     format!("{}", label_exit),
+                    label.clone(),
+                    current_while,
                 ),
                 Some(Expr::WhileStmt(w)) => self.generate_while_stmt(*w, scope),
                 Some(Expr::BreakExpr(_)) => scope.push(format!("\tjmp {}\n", label_exit)),
+                Some(Expr::ContinueExpr(_)) => {
+                    self.generate_continue_expr(current_while.clone(), label.clone(), scope)
+                }
                 Some(Expr::ForStmt(s)) => {
                     self.for_counter += 1;
                     self.generate_for_stmt(s, scope)
                 }
+                Some(Expr::LoopStmt(l)) => self.generate_loop_stmt(l, scope),
                 _ => (),
             }
 
-            if s.return_stmt.is_some() {
-                self.generate_return_stmt(s.return_stmt, "auto".to_string(), scope)
+            if statement.return_stmt.is_some() {
+                self.generate_return_stmt(statement.return_stmt, "auto".to_string(), scope)
             }
         }
 
         scope.push(format!("\tjmp {}\n", label.as_str()));
         scope.push(format!("{}:\n", label_exit.as_str()))
+    }
+
+    fn generate_tuple_literal(&mut self, tup: TupleLiteral, name: String, scope: &mut Vec<String>) {
+        let tname = if name.is_empty() {
+            format!("__tuple_{}", self.unitialized_tuple_counter)
+        } else {
+            format!("__tuple_{}", name)
+        };
+        let length = tup.value.len();
+        let mut data = &mut self.segments.data;
+        let mut t: Vec<String> = Vec::new();
+        for i in 0..length {
+            let s = format!("{}_{}", tname, i);
+            t.push(s);
+        }
+
+        for n in t {
+            data.push(format!("{} dq 1, 0\n", n));
+        }
+
+        // data.push(format!("{} dq 6, "));
+
+        // for n in t {
+        //     let comma = data.push
+        // }
     }
 }
