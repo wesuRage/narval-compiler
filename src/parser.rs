@@ -2482,6 +2482,7 @@ impl Parser {
 
             if self.at().token_type == TokenType::Comma {
                 let mut values: Vec<Expr> = Vec::new();
+                values.push(expr);
                 while self.at().token_type == TokenType::Comma {
                     self.eat();
                     values.push(self.parse_expr());
