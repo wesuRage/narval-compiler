@@ -21,7 +21,6 @@ pub struct X8664Generator<'a> {
     pub unitialized_array_counter: usize,
     pub unitialized_tuple_counter: usize,
     pub unitialized_void_counter: usize,
-    pub string_pointer_counter: usize,
     pub integer_pointer_counter: usize,
     pub temp_return_counter: usize,
     pub memory_access: bool,
@@ -83,7 +82,6 @@ impl<'a> X8664Generator<'a> {
             unitialized_array_counter: 0,
             unitialized_tuple_counter: 0,
             temp_return_counter: 0,
-            string_pointer_counter: 0,
             integer_pointer_counter: 0,
             memory_access: false,
             current_string: None,
@@ -976,13 +974,13 @@ impl<'a> X8664Generator<'a> {
                             .insert(identifier.clone(), format!("{}_{}", parent, identifier));
                         self.segments.data.push(format!(
                             "\t__STR_PTR_{} db \"{}\", 0\n",
-                            self.string_pointer_counter, str_lit.value
+                            self.unitialized_strings_counter, str_lit.value
                         ));
                         let string = format!(
                             "\t{}_{} {} 2, __STR_PTR_{}\n",
-                            parent, identifier, directive, self.string_pointer_counter
+                            parent, identifier, directive, self.unitialized_strings_counter
                         );
-                        self.string_pointer_counter += 1;
+                        self.unitialized_strings_counter += 1;
 
                         self.values.insert(
                             format!("{}_{}", parent, identifier),
@@ -992,14 +990,14 @@ impl<'a> X8664Generator<'a> {
                     } else {
                         self.segments.data.push(format!(
                             "\t__STR_PTR_{} db \"{}\", 0\n",
-                            self.string_pointer_counter, str_lit.value
+                            self.unitialized_strings_counter, str_lit.value
                         ));
                         let string = format!(
                             "\t{} {} 2, __STR_PTR_{}\n",
-                            identifier, directive, self.string_pointer_counter
+                            identifier, directive, self.unitialized_strings_counter
                         );
 
-                        self.string_pointer_counter += 1;
+                        self.unitialized_strings_counter += 1;
 
                         self.values
                             .insert(identifier.clone(), (str_lit.value, Datatype::Text));
@@ -1653,8 +1651,20 @@ impl<'a> X8664Generator<'a> {
                     self.search_symbol(&ident.symbol)
                 ));
             }
-            Expr::StringLiteral(string) => {
-                scope.push(format!("\tmov rax, [{}+8]\n", string.value));
+            Expr::StringLiteral(str_lit) => {
+                let string = format!(
+                    "\t__STR_{}_PTR db \"{}\", 0x0\n\t__STR_{} dq 2, __STR_{}_PTR\n",
+                    self.unitialized_strings_counter,
+                    str_lit.value,
+                    self.unitialized_strings_counter,
+                    self.unitialized_strings_counter
+                );
+
+                self.segments.data.push(string);
+                scope.push(format!(
+                    "\tmov rax, [__STR_{}+8]\n",
+                    self.unitialized_strings_counter
+                ));
                 scope.push("\tmov rax, [rax]\n".to_string());
             }
             _ => {
@@ -1701,6 +1711,20 @@ impl<'a> X8664Generator<'a> {
                         self.generate_test_expr(right, scope);
                         scope.push("\tcmp rax, rbx\n".to_string());
                         return "l".to_string();
+                    }
+                    "<=" => {
+                        self.generate_test_expr(left, scope);
+                        scope.push("\tmov rbx, rax\n".to_string());
+                        self.generate_test_expr(right, scope);
+                        scope.push("\tcmp rax, rbx\n".to_string());
+                        return "nge".to_string();
+                    }
+                    ">=" => {
+                        self.generate_test_expr(left, scope);
+                        scope.push("\tmov rbx, rax\n".to_string());
+                        self.generate_test_expr(right, scope);
+                        scope.push("\tcmp rax, rbx\n".to_string());
+                        return "nle".to_string();
                     }
                     _ => println!("Unsupported operator: {operator}"),
                 }
