@@ -210,12 +210,38 @@ write:
     
     ret
 
+
+;--------------------------------------------------
+; Length of array
+; args sequence: rdi (arr: Array<T>)
+; output: rax (integer)
+arrlen:
+    push rbx               ; Saves rbx 
+    push rdx               ; Saves rdx
+    push rcx               ; Saves rcx
+
+    mov rbx, rdi           ; Save the base address of the array
+    mov rax, [rdi+8]       ; Load the address of the array elements
+    xor rcx, rcx           ; Clear rcx for counting elements
+.len_array_loop:
+    cmp qword [rax + rcx*8], 0  ; Check if the element is zero
+    je .done_array         ; End of array
+    inc rcx                ; Increment element count
+    jmp .len_array_loop    ; Continue checking elements
+.done_array:
+    mov rax, rcx           ; Move the element count to rax
+    pop rcx                ; Restore rcx
+    pop rdx                ; Restore rdx
+    pop rbx                ; Restore rbx
+    ret
+
 ;--------------------------------------------------
 ; Length of string
 ; args sequence: rdi (input: text)
 ; output: rax (integer)
 len:
-    push rbx            ; Saves rbx
+    push rbx        ; Saves rbx
+
     cmp qword [rdi+8], 0x400000
     ja .is_pointer  ; If is a pointer
     mov rbx, rdi    ; If is not a pointer
