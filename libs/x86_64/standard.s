@@ -15,6 +15,8 @@ segment readable writeable
     __STANDARD_NEWLINE db 0xA
     __STANDARD_CLEAR db 0x1B, "[H", 0x1B, "[2J", 0x0
     __TOTXT_BUFFER dq 0, 0
+    __OVERFLOWED_PTR db "overflow", 0x0
+    __OVERFLOWED dq 2, __OVERFLOWED_PTR
 
 
 segment readable executable
@@ -58,13 +60,12 @@ __txt_repeater:
 ; args sequence: rdi (base: integer), rsi (exp: integer)
 ; output: rax (integer)
 __pow:
-
     mov rbx, rdi        ; Moves the first argument to rbx
     mov rax, rsi        ; Moves the second argument to rax
     mov rcx, rax        ; Moves the second argument to rcx to be the exponent
     mov rax, 1          ; initializes the result
     test rcx, rcx       ; Tests rcx
-    jz .pow_end         ; If zero, the funciton ends
+    jz .pow_end         ; If zero, the function ends
 .pow_loop:              ; Otherwise, it starts a multiplication loop
     imul rax, rbx       ; Multiplies rax by rbx
     loop .pow_loop      ; Restart the loop rcx times
@@ -275,7 +276,9 @@ totxt:
     push rdx
     push rsi
     push r9
-
+    
+    test [rdi+8], rax
+    jo .overflow
     cmp byte [rdi], 2        ; Checks if string
     je .totxt_err_text       ; If is string, raise an error
     cmp byte [rdi], 0        ; Checks if integer
@@ -303,6 +306,7 @@ totxt:
     mov byte [rsi], 0       ; Initialize the last byte of the allocated space with 0 (null terminator)
     dec rsi                 ; Move rsi one byte back to start writing the string
     mov rax, qword [rdi+8]  ; Move the integer pointer from rdi to rax
+    jo .overflow
     mov r9b, 0              ; Initialize r9b to 0 (to be used later for the sign)
     cmp rax, 0              ; Compare the number with 0
     jge .totxt_start_conv   ; If the number is greater than or equal to 0, jump to the .start label
@@ -342,14 +346,17 @@ totxt:
     mov qword [__TEMP_STRING_BUFFER+8], rsi
     mov rax, __TEMP_STRING_BUFFER           ; Move the address of the start of the string to rax
     add rsp, 32             ; Restore the stack pointer (remove the allocated space)
-
+    jmp .totxt_end
+.overflow:
+    mov rax, __OVERFLOWED
+    add rsp, 32
 .totxt_end:
     pop r9                  ; Restore the values of the following registers: r9, rsi, rdx, rcx, and rbx
     pop rsi
     pop rdx
     pop rcx
     pop rbx
-    ret                     ; Return from the function, with the result (string) in rax
+    ret            ; Return from the function, with the result (string) in rax
 
 ;--------------------------------------------------
 ; Decimal to Text
