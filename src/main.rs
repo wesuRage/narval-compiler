@@ -87,6 +87,8 @@ fn main() {
     let parser: Parser = Parser::new();
     let ast: Program = parser.produce_ast(tokens.clone(), &source_code);
 
+    //println!("{:#?}", ast.clone());
+
     let namespace: &mut Vec<Namespace> = &mut vec![Namespace::new()];
     let mut checker: Checker = Checker::new(&ast, namespace, &source_code, &full_path);
     utilities(&mut checker);
