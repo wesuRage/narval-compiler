@@ -1,6 +1,2 @@
-for i in 0..=5 {
-  if i == 2 {
-    break;
-  }
-  write("oh great goddess");
-}
+qword pinto: integer = 2 + 2;
+write(totxt(pinto - 1));
