@@ -564,7 +564,7 @@ impl Parser {
                 let mut column: (usize, usize) = self.at().column;
                 let mut position: (usize, usize) = self.at().position;
                 let lineno: usize = self.at().lineno;
-
+                //parse_range
                 let expr: Expr = self.parse_expr();
                 column.1 = self.at().column.1 - 1;
                 position.1 = self.at().position.1 - 1;
@@ -920,7 +920,33 @@ impl Parser {
         let mut column: (usize, usize) = self.at().column;
         let mut position: (usize, usize) = self.at().position;
         let lineno: usize = self.at().lineno;
+        if self.at().token_type == TokenType::Range
+            || self.at().token_type == TokenType::RangeInclusive
+        {
+            let range: String = self.eat().value;
+            let mut expr: Expr = self.parse_expr();
 
+            column.1 = self.at().column.1 - 1;
+            position.1 = self.at().position.1 - 1;
+            expr = Expr::RangeExpr(Box::new(RangeExpr {
+                kind: NodeType::RangeExpr,
+                start: Expr::NumericLiteral(NumericLiteral {
+                    kind: NodeType::NumericLiteral,
+                    value: String::from("0"),
+                    typ: Some(Datatype::Integer),
+                    column,
+                    position,
+                    lineno,
+                }),
+                range,
+                end: expr,
+                column,
+                position,
+                lineno,
+            }));
+
+            return expr;
+        }
         let mut expr: Expr = self.parse_expr();
 
         if self.at().token_type == TokenType::Range
