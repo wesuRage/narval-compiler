@@ -15,13 +15,12 @@ pub struct X8664Generator<'a> {
     pub assembly: String,
     pub identifier: HashMap<String, (String, NodeType)>,
     pub strings: HashMap<String, (String, Option<String>)>,
-    pub unitialized_strings_counter: usize,
+    pub unitialized_string_counter: usize,
     pub unitialized_integer_counter: usize,
     pub unitialized_boolean_counter: usize,
     pub unitialized_array_counter: usize,
     pub unitialized_tuple_counter: usize,
     pub unitialized_void_counter: usize,
-    pub integer_pointer_counter: usize,
     pub temp_return_counter: usize,
     pub memory_access: bool,
     pub current_string: Option<String>,
@@ -75,14 +74,13 @@ impl<'a> X8664Generator<'a> {
             assembly: String::new(),
             identifier: HashMap::new(),
             strings: HashMap::new(),
-            unitialized_strings_counter: 0,
+            unitialized_string_counter: 0,
             unitialized_integer_counter: 0,
             unitialized_boolean_counter: 0,
             unitialized_void_counter: 0,
             unitialized_array_counter: 0,
             unitialized_tuple_counter: 0,
             temp_return_counter: 0,
-            integer_pointer_counter: 0,
             memory_access: false,
             current_string: None,
             current_int: 0,
@@ -377,18 +375,18 @@ impl<'a> X8664Generator<'a> {
                         } else {
                             let string = format!(
                                 "\t__STR_{}_PTR db \"{}\"\n\t__STR_{} dq 2, __STR_{}_PTR\n",
-                                self.unitialized_strings_counter,
+                                self.unitialized_string_counter,
                                 str_lit.value,
-                                self.unitialized_strings_counter,
-                                self.unitialized_strings_counter
+                                self.unitialized_string_counter,
+                                self.unitialized_string_counter
                             );
 
                             self.segments.data.push(string);
-                            let identifier = format!("__STR_{}", self.unitialized_strings_counter);
+                            let identifier = format!("__STR_{}", self.unitialized_string_counter);
                             self.strings
                                 .insert(str_lit.value.clone(), (identifier.clone(), None));
                             arg_stack.push(CallerType::Str(identifier));
-                            self.unitialized_strings_counter += 1;
+                            self.unitialized_string_counter += 1;
                         }
                     }
                     Expr::NumericLiteral(ref num_lit) => {
@@ -578,7 +576,7 @@ impl<'a> X8664Generator<'a> {
                             .map(|(_, t)| t)
                             .unwrap()
                             .to_owned();
-                        if typ != NodeType::BinaryExpr {
+                        if typ != NodeType::BinaryExpr && typ != NodeType::NumericLiteral {
                             scope.push("\tmov rax, [rax]\n".to_string());
                         }
                     }
@@ -597,16 +595,16 @@ impl<'a> X8664Generator<'a> {
                 } else {
                     let string = format!(
                         "\t__STR_{}_PTR db \"{}\", 0\n\t__STR_{} dq 2, __STR_{}_PTR\n",
-                        self.unitialized_strings_counter,
+                        self.unitialized_string_counter,
                         string.value,
-                        self.unitialized_strings_counter,
-                        self.unitialized_strings_counter
+                        self.unitialized_string_counter,
+                        self.unitialized_string_counter
                     );
 
                     self.segments.data.push(string);
                     self.current_string =
-                        Some(format!("[__STR_{}+8]", self.unitialized_strings_counter));
-                    self.unitialized_strings_counter += 1;
+                        Some(format!("[__STR_{}+8]", self.unitialized_string_counter));
+                    self.unitialized_string_counter += 1;
                 }
             }
             _ => {
@@ -847,6 +845,69 @@ impl<'a> X8664Generator<'a> {
         }
     }
 
+    fn generate_element_identifier_value(
+        &mut self,
+        ident: String,
+        identifier: String,
+        index: usize,
+        elements_str: &mut Vec<String>,
+        typeof_element: &str,
+    ) {
+        if let Some((value, typ)) = self.values.get(&ident).map(|(v, t)| (v, t)) {
+            let (placeholder, dat_type) = match typ {
+                &Datatype::Integer => {
+                    let data = (format!("__INT_{}", self.unitialized_integer_counter), "0");
+                    self.unitialized_integer_counter += 1;
+                    data
+                }
+                &Datatype::Text => {
+                    let data = (format!("__STR_{}", self.unitialized_string_counter), "2");
+                    self.unitialized_string_counter += 1;
+                    data
+                }
+                &Datatype::Boolean => {
+                    let data = (format!("__BOOL_{}", self.unitialized_boolean_counter), "3");
+                    self.unitialized_boolean_counter += 1;
+                    data
+                }
+                &Datatype::Array(_) => {
+                    let data = (format!("__ARR_{}", self.unitialized_array_counter), "5");
+                    self.unitialized_array_counter += 1;
+                    data
+                }
+                &Datatype::Tuple(_) => {
+                    let data = (format!("__TUP_{}", self.unitialized_tuple_counter), "6");
+                    self.unitialized_tuple_counter += 1;
+                    data
+                }
+                _ => {
+                    let data = (format!("__VOID_{}", self.unitialized_void_counter), "4");
+                    self.unitialized_void_counter += 1;
+                    data
+                }
+            };
+
+            let ptr: String;
+            if dat_type == "2" {
+                ptr = format!("\t{} db \"{}\", 0x0\n", placeholder, value);
+            } else {
+                ptr = format!("\t{} db {}\n", placeholder, value);
+            };
+
+            let elem_data = format!(
+                "\t__{}_{}_{} dq {}, {}\n",
+                typeof_element, identifier, index, dat_type, placeholder
+            );
+
+            let elem = format!("__{}_{}_{}", typeof_element, identifier, index);
+            self.segments.data.push(ptr);
+            self.segments.data.push(elem_data);
+            elements_str.push(elem);
+        } else {
+            panic!("Identifier not found: {}", identifier)
+        };
+    }
+
     fn generate_var_declaration(
         &mut self,
         declaration: VarDeclaration,
@@ -974,13 +1035,13 @@ impl<'a> X8664Generator<'a> {
                             .insert(identifier.clone(), format!("{}_{}", parent, identifier));
                         self.segments.data.push(format!(
                             "\t__STR_PTR_{} db \"{}\", 0\n",
-                            self.unitialized_strings_counter, str_lit.value
+                            self.unitialized_string_counter, str_lit.value
                         ));
                         let string = format!(
                             "\t{}_{} {} 2, __STR_PTR_{}\n",
-                            parent, identifier, directive, self.unitialized_strings_counter
+                            parent, identifier, directive, self.unitialized_string_counter
                         );
-                        self.unitialized_strings_counter += 1;
+                        self.unitialized_string_counter += 1;
 
                         self.values.insert(
                             format!("{}_{}", parent, identifier),
@@ -990,14 +1051,14 @@ impl<'a> X8664Generator<'a> {
                     } else {
                         self.segments.data.push(format!(
                             "\t__STR_PTR_{} db \"{}\", 0\n",
-                            self.unitialized_strings_counter, str_lit.value
+                            self.unitialized_string_counter, str_lit.value
                         ));
                         let string = format!(
                             "\t{} {} 2, __STR_PTR_{}\n",
-                            identifier, directive, self.unitialized_strings_counter
+                            identifier, directive, self.unitialized_string_counter
                         );
 
-                        self.unitialized_strings_counter += 1;
+                        self.unitialized_string_counter += 1;
 
                         self.values
                             .insert(identifier.clone(), (str_lit.value, Datatype::Text));
@@ -1138,144 +1199,11 @@ impl<'a> X8664Generator<'a> {
                 }
             }
             NodeType::ArrayExpr => {
-                if let Expr::ArrayExpr(array) = declaration_value.clone() {
-                    let elements = array.elements;
-                    let mut elements_str = Vec::new();
-
-                    for (index, element) in elements.iter().enumerate() {
-                        match element {
-                            Expr::StringLiteral(s) => {
-                                let string_label =
-                                    format!("__STR_{}", self.unitialized_strings_counter);
-                                let string_def =
-                                    format!("\t{} db \"{}\", 0x0\n", string_label, s.value);
-                                self.segments.data.push(string_def);
-
-                                let array_elem_data = format!(
-                                    "\t__array_{}_{} dq 2, {}\n",
-                                    identifier, index, string_label
-                                );
-
-                                let array_elem = format!("__array_{}_{}", identifier, index);
-
-                                elements_str.push(array_elem);
-                                self.segments.data.push(array_elem_data);
-                                self.unitialized_strings_counter += 1;
-                            }
-                            Expr::NumericLiteral(n) => {
-                                let array_elem_data = format!(
-                                    "\t__array_{}_{} dq 0, {}\n",
-                                    identifier, index, n.value
-                                );
-
-                                let array_elem = format!("__array_{}_{}", identifier, index);
-
-                                elements_str.push(array_elem);
-                                self.segments.data.push(array_elem_data);
-                            }
-                            Expr::Identifier(id) => {
-                                let ident = self.search_symbol(&id.symbol);
-                                if let Some((value, typ)) =
-                                    self.values.get(&ident).map(|(v, t)| (v, t))
-                                {
-                                    let (placeholder, dat_type) = match typ {
-                                        &Datatype::Integer => {
-                                            let data = (
-                                                format!(
-                                                    "__INT_{}",
-                                                    self.unitialized_integer_counter
-                                                ),
-                                                "0",
-                                            );
-                                            self.unitialized_integer_counter += 1;
-                                            data
-                                        }
-                                        &Datatype::Text => {
-                                            let data = (
-                                                format!(
-                                                    "__STR_{}",
-                                                    self.unitialized_strings_counter
-                                                ),
-                                                "2",
-                                            );
-                                            self.unitialized_strings_counter += 1;
-                                            data
-                                        }
-                                        &Datatype::Boolean => {
-                                            let data = (
-                                                format!(
-                                                    "__BOOL_{}",
-                                                    self.unitialized_boolean_counter
-                                                ),
-                                                "3",
-                                            );
-                                            self.unitialized_boolean_counter += 1;
-                                            data
-                                        }
-                                        &Datatype::Array(_) => {
-                                            let data = (
-                                                format!("__ARR_{}", self.unitialized_array_counter),
-                                                "5",
-                                            );
-                                            self.unitialized_array_counter += 1;
-                                            data
-                                        }
-                                        &Datatype::Tuple(_) => {
-                                            let data = (
-                                                format!("__TUP_{}", self.unitialized_tuple_counter),
-                                                "6",
-                                            );
-                                            self.unitialized_tuple_counter += 1;
-                                            data
-                                        }
-                                        _ => {
-                                            let data = (
-                                                format!("__VOID_{}", self.unitialized_void_counter),
-                                                "4",
-                                            );
-                                            self.unitialized_void_counter += 1;
-                                            data
-                                        }
-                                    };
-
-                                    let ptr: String;
-                                    if dat_type == "2" {
-                                        ptr = format!("\t{} db \"{}\", 0x0\n", placeholder, value);
-                                    } else {
-                                        ptr = format!("\t{} db {}\n", placeholder, value);
-                                    };
-
-                                    let array_elem_data = format!(
-                                        "\t__array_{}_{} dq {}, {}\n",
-                                        identifier, index, dat_type, placeholder
-                                    );
-
-                                    let array_elem = format!("__array_{}_{}", identifier, index);
-
-                                    self.segments.data.push(ptr);
-                                    self.segments.data.push(array_elem_data);
-                                    elements_str.push(array_elem);
-                                } else {
-                                    panic!("Identifier not found: {}", identifier)
-                                };
-                            }
-                            _ => println!("Element type not supported: {:?}", element),
-                        }
-                    }
-
-                    let array_def =
-                        format!("\t{} dq 5, {}, 0\n", identifier, elements_str.join(", "));
-                    self.segments.data.push(array_def);
-                    self.identifier
-                        .insert(identifier.clone(), ("dq".to_string(), NodeType::ArrayExpr));
-                    format!("")
-                } else {
-                    format!("")
-                }
+                self.generate_array_expr(declaration_value.clone(), identifier.clone(), data_size)
             }
             NodeType::TupleLiteral => {
                 if let Expr::TupleLiteral(tuple) = declaration_value.clone() {
-                    let elements = tuple.value;
+                    self.generate_tuple_literal(tuple, identifier.clone());
                     format!("")
                 } else {
                     format!("")
@@ -1368,22 +1296,22 @@ impl<'a> X8664Generator<'a> {
             Expr::StringLiteral(s) => {
                 let string: String = format!(
                     "\t__STR_{}_PTR db \"{}\", 0\n\t__STR_{} dq 2, __STR_{}_PTR\n",
-                    self.unitialized_strings_counter,
+                    self.unitialized_string_counter,
                     s.value,
-                    self.unitialized_strings_counter,
-                    self.unitialized_strings_counter
+                    self.unitialized_string_counter,
+                    self.unitialized_string_counter
                 );
 
                 self.segments.data.push(string);
                 scope.push(format!(
                     "\tmov rdi, __STR_{}\n",
-                    self.unitialized_strings_counter
+                    self.unitialized_string_counter
                 ));
-                self.for_iterable_string = format!("__STR_{}", self.unitialized_strings_counter);
+                self.for_iterable_string = format!("__STR_{}", self.unitialized_string_counter);
 
                 scope.push("\tcall len\n".to_string());
                 scope.push(format!("\txor rcx, rcx\n"));
-                self.unitialized_strings_counter += 1;
+                self.unitialized_string_counter += 1;
                 self.for_range_is_string = true;
                 self.for_range_is_ascii = false;
                 self.for_range_is_array = false;
@@ -1455,7 +1383,24 @@ impl<'a> X8664Generator<'a> {
                         self.for_range_is_string = false;
                         self.for_range_is_ascii = false;
                     }
-                    _ => println!("Type not supported on sequence"),
+                    NodeType::StringLiteral => {
+                        scope.push("\tmov rax, 0\n".to_string());
+                        scope.push("\tmov rcx, rax\n".to_string());
+                        scope.push(format!("\tmov rdi, {}\n", new_id));
+                        scope.push("\tcall len\n".to_string());
+                        self.for_range_is_array = false;
+                        self.for_range_is_string = false;
+                        self.for_range_is_ascii = false;
+                    }
+                    NodeType::NumericLiteral => {
+                        scope.push("\tmov rax, 0\n".to_string());
+                        scope.push("\tmov rcx, rax\n".to_string());
+                        scope.push(format!("\tmov rdi, {}\n", new_id));
+                        self.for_range_is_array = false;
+                        self.for_range_is_string = false;
+                        self.for_range_is_ascii = false;
+                    }
+                    _ => println!("Type not supported on sequence: {:?}", typ),
                 }
             }
             _ => println!("Expression not supported on sequence: {:?}", sequence),
@@ -1552,8 +1497,7 @@ impl<'a> X8664Generator<'a> {
                 "\t__for_pointer_{} dq 0\n",
                 self.for_pointer_counter
             ));
-            scope.push("\tinc rcx\n".to_string());
-            scope.push(format!("\tmov rcx, [{}+rcx*8]\n", self.current_for_array));
+            scope.push(format!("\tmov rcx, [{}+rcx*8+8]\n", self.current_for_array));
             scope.push(format!(
                 "\tmov [__for_pointer_{}], rcx\n",
                 self.for_pointer_counter
@@ -1654,16 +1598,16 @@ impl<'a> X8664Generator<'a> {
             Expr::StringLiteral(str_lit) => {
                 let string = format!(
                     "\t__STR_{}_PTR db \"{}\", 0x0\n\t__STR_{} dq 2, __STR_{}_PTR\n",
-                    self.unitialized_strings_counter,
+                    self.unitialized_string_counter,
                     str_lit.value,
-                    self.unitialized_strings_counter,
-                    self.unitialized_strings_counter
+                    self.unitialized_string_counter,
+                    self.unitialized_string_counter
                 );
 
                 self.segments.data.push(string);
                 scope.push(format!(
                     "\tmov rax, [__STR_{}+8]\n",
-                    self.unitialized_strings_counter
+                    self.unitialized_string_counter
                 ));
                 scope.push("\tmov rax, [rax]\n".to_string());
             }
@@ -1936,28 +1880,131 @@ impl<'a> X8664Generator<'a> {
         scope.push(format!("{}:\n", label_exit.as_str()))
     }
 
-    fn generate_tuple_literal(&mut self, tup: TupleLiteral, name: String, scope: &mut Vec<String>) {
-        let tname = if name.is_empty() {
+    fn generate_array_expr(
+        &mut self,
+        declaration_value: Expr,
+        identifier: String,
+        data_size: &str,
+    ) -> String {
+        if let Expr::ArrayExpr(array) = declaration_value.clone() {
+            let elements: Vec<Expr> = array.elements;
+            let mut elements_str: Vec<String> = Vec::new();
+            let name = if identifier.is_empty() {
+                format!("__array_{}", self.unitialized_array_counter)
+            } else {
+                format!("{}", self.search_symbol(&identifier))
+            };
+            for (index, element) in elements.iter().enumerate() {
+                match element {
+                    Expr::StringLiteral(s) => {
+                        let string_label = format!("__STR_{}", self.unitialized_string_counter);
+                        let string_def = format!("\t{} db \"{}\", 0x0\n", string_label, s.value);
+                        self.segments.data.push(string_def);
+
+                        let array_elem_data =
+                            format!("\t__array_{}_{} dq 2, {}\n", name, index, string_label);
+
+                        let array_elem = format!("__array_{}_{}", name, index);
+
+                        elements_str.push(array_elem);
+                        self.segments.data.push(array_elem_data);
+                        self.unitialized_string_counter += 1;
+                    }
+                    Expr::NumericLiteral(n) => {
+                        let array_elem_data = format!("\t{}_{} dq 0, {}\n", name, index, n.value);
+
+                        let array_elem = format!("__array_{}_{}", name, index);
+
+                        elements_str.push(array_elem);
+                        self.segments.data.push(array_elem_data);
+                    }
+                    Expr::Identifier(id) => {
+                        let ident = self.search_symbol(&id.symbol);
+                        self.generate_element_identifier_value(
+                            ident,
+                            name.clone(),
+                            index,
+                            &mut elements_str,
+                            "array",
+                        );
+                    }
+                    _ => println!("Element type not supported: {:?}", element),
+                }
+            }
+
+            let array_def = format!("\t{} dq 5, {}, 0\n", name, elements_str.join(", "));
+            self.segments.data.push(array_def);
+            self.identifier.insert(
+                identifier.clone(),
+                (data_size.to_string(), NodeType::ArrayExpr),
+            );
+            format!("")
+        } else {
+            format!("")
+        }
+    }
+
+    fn process_identifier(
+        &mut self,
+        id: String,
+        name: String,
+        index: usize,
+        indexes: &mut Vec<String>,
+    ) {
+        let ident = self.search_symbol(&id);
+        self.generate_element_identifier_value(ident, name, index, indexes, "tuple");
+    }
+
+    fn generate_tuple_literal(&mut self, tuple: TupleLiteral, name: String) {
+        let tuple_name = if name.is_empty() {
             format!("__tuple_{}", self.unitialized_tuple_counter)
         } else {
-            format!("__tuple_{}", name)
+            format!("{}", name)
         };
-        let length = tup.value.len();
-        let mut data = &mut self.segments.data;
-        let mut t: Vec<String> = Vec::new();
+
+        let length = tuple.value.len();
+
+        let mut indexes: Vec<String> = Vec::new();
         for i in 0..length {
-            let s = format!("{}_{}", tname, i);
-            t.push(s);
+            let s = format!("__tuple_{}_{}", tuple_name, i);
+            indexes.push(s);
         }
 
-        for n in t {
-            data.push(format!("{} dq 1, 0\n", n));
+        for (index, element) in indexes.clone().iter().enumerate() {
+            let value = tuple.value[index].clone();
+            let valueidx = element;
+            match value {
+                Expr::NumericLiteral(num) => {
+                    let intname = format!("__INT_{}", self.unitialized_integer_counter);
+                    self.unitialized_integer_counter += 1;
+                    self.segments
+                        .data
+                        .push(format!("\t{} dq {}\n", intname, num.value));
+                    self.segments
+                        .data
+                        .push(format!("\t{} dq 0, {}\n", valueidx, intname));
+                }
+                Expr::StringLiteral(string) => {
+                    let strname = format!("__STR_{}", self.unitialized_string_counter);
+                    self.unitialized_string_counter += 1;
+                    self.segments
+                        .data
+                        .push(format!("\t{} db \"{}\", 0x0\n", strname, string.value));
+                    self.segments
+                        .data
+                        .push(format!("\t{} dq 2, {}\n", valueidx, strname));
+                }
+                Expr::Identifier(id) => {
+                    self.process_identifier(id.symbol, name.clone(), index, &mut indexes)
+                }
+                _ => (),
+            }
         }
 
-        // data.push(format!("{} dq 6, "));
-
-        // for n in t {
-        //     let comma = data.push
-        // }
+        self.segments.data.push(format!(
+            "\t{} dq 6, {}, 0\n",
+            tuple_name,
+            indexes.join(", ")
+        ));
     }
 }
