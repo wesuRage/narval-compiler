@@ -172,6 +172,7 @@ impl<'a> Checker<'a> {
                 Some(Expr::WhileStmt(ref stmt)) => self.check_while(&*stmt),
                 Some(Expr::ForStmt(ref stmt)) => self.check_for(stmt),
                 Some(Expr::RangeExpr(ref expr)) => self.check_range(&*expr),
+                Some(Expr::TupleLiteral(ref literal)) => self.check_tuple(literal),
                 _ => Some(Void),
             }
         }
@@ -778,7 +779,7 @@ impl<'a> Checker<'a> {
                 }
                 Some(Text) => {
                     valuet.push(Text);
-                } //ja volto okay PUTA QUE PARIU bota Somwe void o final
+                }
                 _ => {
                     self.error(
                         &*stmt.sequence,
@@ -827,7 +828,23 @@ impl<'a> Checker<'a> {
                     .as_str(),
                 );
                 Some(Void)
-            } // kkkkkkkkkkkkkkkk
-        }; //que odio, ja dei milagre antes da g
+            }
+        };
+    }
+
+    fn check_tuple(&mut self, literal: &TupleLiteral) -> Dt {
+        let mut types: Vec<Datatype> = Vec::new();
+
+        for e in &literal.value {
+            types.push(self.check(&self.expr2stmt(e.clone())).unwrap());
+        }
+
+        if types.len() == 1 {
+            return Some(Tuple(Box::new(types[0].clone())));
+        } else {
+            return Some(Tuple(Box::new(_Multitype(
+                types.iter().map(|e| Box::new(e.clone())).collect(),
+            ))));
+        }
     }
 }
