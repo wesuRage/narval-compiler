@@ -12,6 +12,7 @@ segment readable writeable
     __TOTXT_ERR_UNKNOWN dq 2, __TOTXT_ERR_UNKNOWN_STR_PTR
 
     __TEMP_STRING_BUFFER rb 1024*1024
+    __TEMP_INTEGER_BUFFER rb 1024
     __STANDARD_NEWLINE db 0xA
     __STANDARD_CLEAR db 0x1B, "[H", 0x1B, "[2J", 0x0
     __TOTXT_BUFFER dq 0, 0
@@ -277,8 +278,6 @@ totxt:
     push rsi
     push r9
     
-    test [rdi+8], rax
-    jo .overflow
     cmp byte [rdi], 2        ; Checks if string
     je .totxt_err_text       ; If is string, raise an error
     cmp byte [rdi], 0        ; Checks if integer
