@@ -492,6 +492,9 @@ impl<'a> X8664Generator<'a> {
                             Some("rax".to_string()),
                             scope,
                         );
+                        scope.push("\tmov qword [__TEMP_INTEGER_BUFFER], 0\n".to_string());
+                        scope.push("\tmov qword [__TEMP_INTEGER_BUFFER+8], rax\n".to_string());
+                        arg_stack.push(CallerType::Id("__TEMP_INTEGER_BUFFER".to_string()));
                     }
                     _ => panic!("Unexpected argument type in call expression."),
                 }
@@ -684,7 +687,8 @@ impl<'a> X8664Generator<'a> {
                     self.generate_mov_identifier(identifier, scope);
                 }
                 "-" => {
-                    scope.push("\tsub rax, rbx\n".to_string());
+                    scope.push("\tsub rbx, rax\n".to_string());
+                    scope.push("\tmov rax, rbx\n".to_string());
                     self.generate_mov_identifier(identifier, scope);
                 }
                 _ => (),
