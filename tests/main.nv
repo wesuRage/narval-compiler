@@ -1,2 +1,2 @@
-qword pinto: integer = 2 + 2;
-write(totxt(pinto - 1));
+qword abc: integer = 2 + 3;
+write(totxt(abc - 1));

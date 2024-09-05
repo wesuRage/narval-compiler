@@ -4,21 +4,25 @@ entry main
 include "/var/lib/narval/libs/x86_64/standard.s"
 
 segment readable writeable
-	pinto dq 0, 0
+	abc dq 0, 0
 
 segment readable executable
 main:
 	mov rax, 2
-	add rax, rax
-	mov [pinto+8], rax
+	mov rbx, rax
+	mov rax, 3
+	add rax, rbx
+	mov [abc+8], rax
 	push r15
 	mov r15, 1
-	mov rax, [pinto+8]
+	mov rax, [abc+8]
 	mov rbx, rax
 	mov rax, 1
 	sub rbx, rax
-	mov [pinto+8], rax
-	mov rdi, pinto
+	mov rax, rbx
+	mov qword [__TEMP_INTEGER_BUFFER], 0
+	mov qword [__TEMP_INTEGER_BUFFER+8], rax
+	mov rdi, __TEMP_INTEGER_BUFFER
 	call totxt
 
 	pop r15
